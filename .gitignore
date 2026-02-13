@@ -1,0 +1,15 @@
+# Data (large; add locally)
+*.RData
+*.rds
+# R
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optional: uncomment if you don't want to track BeatAML2 downloads
+# beataml2_data/
