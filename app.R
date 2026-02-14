@@ -21,10 +21,10 @@ if (has_maxstat) library(maxstat)
 has_bestglm <- requireNamespace("bestglm", quietly = TRUE)
 if (has_bestglm) library(bestglm)
 
-# Load data
+# Load data (app expects final_data_matrix.RData in the same directory as app.R)
 data_path <- file.path(getwd(), "final_data_matrix.RData")
 if (!file.exists(data_path)) {
-  stop("Data file not found. Please run the app from the Meta AML directory.")
+  stop("Data file not found. Place final_data_matrix.RData in the app directory and run the app from that directory.\n  Looked for: ", normalizePath(data_path, mustWork = FALSE))
 }
 load(data_path)
 
@@ -45,7 +45,11 @@ normalize_AML_Meta_Cohort <- function(d) {
   if (!"Sample" %in% colnames(d)) d$Sample <- paste0("S", seq_len(nrow(d)))
   if ("Gene" %in% colnames(d)) d$Gene <- as.character(d$Gene)
   if ("VAF" %in% colnames(d)) d$VAF <- as.numeric(d$VAF)
-  if ("Cohort" %in% colnames(d)) d$Cohort <- as.character(d$Cohort)
+  if ("Cohort" %in% colnames(d)) {
+    d$Cohort <- as.character(d$Cohort)
+    d$Cohort[d$Cohort == "NCRI"] <- "UK-NCRI"
+    d$Cohort[d$Cohort == "AMLSG"] <- "AML-SG"
+  }
   # Subset: type_AML or De_novo / Secondary / Relapse
   if ("type_AML" %in% colnames(d)) {
     t <- as.character(d$type_AML)
@@ -108,6 +112,7 @@ normalize_AML_Meta_Cohort <- function(d) {
 
 # Load AML_Meta_Cohort (four cohorts merged) for Meta AML4 tab; fallback to final_data_matrix if missing
 AML_Meta_Cohort <- NULL
+meta4_uses_dedicated_file <- FALSE
 meta4_path_rdata <- file.path(getwd(), "AML_Meta_Cohort.RData")
 meta4_path_rds <- file.path(getwd(), "AML_Meta_Cohort.rds")
 if (file.exists(meta4_path_rdata)) {
@@ -116,12 +121,14 @@ if (file.exists(meta4_path_rdata)) {
   nms <- ls(env_meta4)
   if ("AML_Meta_Cohort" %in% nms) AML_Meta_Cohort <- get("AML_Meta_Cohort", env_meta4)
   else if (length(nms) == 1L) AML_Meta_Cohort <- get(nms[1], env_meta4)
+  if (!is.null(AML_Meta_Cohort)) meta4_uses_dedicated_file <- TRUE
 } else if (file.exists(meta4_path_rds)) {
   AML_Meta_Cohort <- as.data.frame(readRDS(meta4_path_rds), stringsAsFactors = FALSE)
+  meta4_uses_dedicated_file <- TRUE
 }
 if (!is.null(AML_Meta_Cohort) && is.data.frame(AML_Meta_Cohort)) {
   AML_Meta_Cohort <- normalize_AML_Meta_Cohort(AML_Meta_Cohort)
-  # Classify genes in Meta AML4 using same mutation_category as Analyses (final_data_matrix)
+  # Classify genes in Meta AML4 using same mutation_category as Benard et al. (2021) (final_data_matrix)
   ref <- final_data_matrix[!is.na(final_data_matrix$mutation_category) & as.character(final_data_matrix$mutation_category) != "", c("Gene", "mutation_category"), drop = FALSE]
   if (nrow(ref) > 0) {
     ref$Gene <- as.character(ref$Gene)
@@ -162,8 +169,8 @@ ONCO_SUBSET_COL <- c(de_novo = "#C16622FF", secondary = "#767676FF", relapse = "
   Remission = "#8A9045FF", Residual = "#155F83FF", therapy = "#8F3931FF", MDS = "#58593FFF", Unknown = "gray90")
 ONCO_VAR_COL <- c(Deletion = "#374E55FF", INDEL = "#DF8F44FF", Insertion = "#00A1D5FF", ITD = "#79AF97FF",
   SNV = "#B24745FF", Splicing = "#6A6599FF", Unknown = "#80796BFF")
-# Meta AML4 tab: uniform cohort/subset/variant colors (four cohorts: Beat_AML, TCGA, AMLSG, NCRI)
-META4_COHORT_COL <- c(Beat_AML = "#155F83FF", TCGA = "#EFC000FF", AMLSG = "#CD534CFF", NCRI = "#00A087FF")
+# Meta AML4 tab: uniform cohort/subset/variant colors (four cohorts: Beat_AML, TCGA, AML-SG, UK-NCRI)
+META4_COHORT_COL <- c(Beat_AML = "#155F83FF", TCGA = "#EFC000FF", `AML-SG` = "#CD534CFF", `UK-NCRI` = "#00A087FF")
 META4_SUBSET_COL <- c(De_novo = "#C16622FF", Secondary = "#767676FF", Relapse = "#800000FF",
   oAML = "#FFA319FF", unknown = "#8A9045FF", tAML = "#8F3931FF",
   de_novo = "#C16622FF", secondary = "#767676FF", relapse = "#800000FF", therapy = "#8F3931FF", other = "#FFA319FF")
@@ -203,7 +210,8 @@ ui <- fluidPage(
      .welcome-page ul{font-size:15px;line-height:1.7;}
      #main_nav .nav-tabs{margin-bottom:0;border-bottom:2px solid #374e55;}
      #main_nav .nav-tabs .nav-link{font-weight:600;color:#374e55;}
-     #main_nav .nav-tabs .nav-link.active{background:#374e55;color:#fff;border-color:#374e55;}"
+     #main_nav .nav-tabs .nav-link.active{background:#374e55;color:#fff;border-color:#374e55;}
+     #drug_subset_wrap .shiny-input-container{width:140px !important;min-width:140px;}"
   ))),
   div(id = "data-loading-overlay", style = "display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.92); z-index: 9999; align-items: center; justify-content: center;",
     tags$div(style = "position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: 2em;",
@@ -241,13 +249,13 @@ ui <- fluidPage(
     tabPanel("About", value = "about",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         h2("Welcome to Meta AML Explorer"),
-        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational data. Two analysis tabs offer different data sources and the same set of analyses (cohort summaries, survival, VAF, co-mutations, drug sensitivity)."),
-        h2("Analyses tab"),
-        p("Data from ", strong("Benard et al. (2021)"), " ", em("Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia."), " Nature Communications."),
-        p(tags$a(href = "https://www.nature.com/articles/s41467-021-27472-5", target = "_blank", "https://www.nature.com/articles/s41467-021-27472-5")),
+        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Benard et al. (2021)"), " and ", strong("Meta AML4"), " tabs offer different data sources and the same set of analyses (cohort summaries, survival, VAF, co-mutations, drug sensitivity)."),
+        h2("Benard et al. (2021) tab"),
+        p("Data from ", strong("Benard et al. (2021)"), " ", em("Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia."), " Nature Communications | ", tags$a("Paper", href = "https://www.nature.com/articles/s41467-021-27472-5", target = "_blank")),
         p("The paper aggregates mutation calls, variant allele frequencies (VAF), and clinical outcomes from ~2,800 patients across 12 cohorts (TCGA, Beat AML/Tyner, Papaemmanuil, Majeti, and others) to link clonal architecture to prognosis and therapy response."),
         h2("Meta AML4 tab"),
-        p("Meta AML4 merges the ", strong("four largest AML datasets as of 2026"), " into a single cohort. The same analyses (Overview, Single-Gene Associations, Co-mutation, VAF, Drug Sensitivity, Data Table) are available with cohort- and subset-specific filters for this merged resource."),
+        p("Meta AML4 merges ", strong("four of the largest molecularly profiled and clinically annotated AML datasets"), " into a single cohort: TCGA LAML (~200 patients), BeatAML2 (805 patients), AML-SG (1,540 patients), and UK-NCRI (2,113 patients)—", strong("~4,660 patients combined"), ". The same analyses (Overview, Single-Gene Associations, Co-mutation, VAF, Drug Sensitivity, Data Table) are available with cohort- and subset-specific filters."),
+        p("Data sources: AML-SG and UK-NCRI from ", tags$a("Tazi et al. (2022)", href = "https://www.nature.com/articles/s41467-022-32103-8", target = "_blank"), " (Unified classification and risk-stratification in AML, Nature Communications); BeatAML2 from ", tags$a("biodev.github.io/BeatAML2", href = "https://biodev.github.io/BeatAML2/", target = "_blank"), "; TCGA LAML from ", tags$a("cBioPortal", href = "https://www.cbioportal.org/", target = "_blank"), "."),
         h2("What you can do in both tabs"),
         tags$ul(
           tags$li(strong("Overview"), "— Cohort summary, sample counts by cohort and AML subset, and an OncoPrint of mutations and clinical annotations."),
@@ -258,11 +266,19 @@ ui <- fluidPage(
           tags$li(strong("Data Table"), "— Filterable, searchable mutation table.")
         ),
         p("Use the ", strong("Filters"), " sidebar to restrict by AML subset, cohort, and minimum mutation frequency."),
+        h2("Caveats"),
+        p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
+        p("The current implementation does not account for copy number correction of variant allele frequencies (VAFs). A future implementation will incorporate copy number data to define and use cancer cell fractions of mutations instead of VAFs."),
         h2("About the author"),
-        p("Brooks Benard, Stanford University.", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"))
+        p("Brooks Benard, Stanford University. ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"), " · ", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu")),
+        hr(),
+        p(style = "font-size: 0.9em; color: #666;",
+          "© ", format(Sys.Date(), "%Y"), " Brooks Benard. Licensed under ",
+          tags$a("MIT License", href = "https://opensource.org/licenses/MIT", target = "_blank"), "."
+        )
       )
     ),
-    tabPanel("Analyses", value = "analyses"),
+    tabPanel("Benard et al. (2021)", value = "analyses"),
     tabPanel("Meta AML4", value = "meta_aml4"),
     conditionalPanel(
       condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
@@ -281,6 +297,7 @@ ui <- fluidPage(
         ),
         mainPanel(
           width = 10,
+          uiOutput("meta4_fallback_banner"),
           tabsetPanel(
             tabPanel("Overview",
           fluidRow(
@@ -357,21 +374,23 @@ ui <- fluidPage(
           p("VAF and mutation correlations with inhibitor sensitivity from BeatAML2 data.",
             a("biodev.github.io/BeatAML2", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           fluidRow(
-            column(3, wellPanel(
-              h4("Settings"),
-              selectInput("drug_subset", "AML Subset:", choices = c("All", "de_novo", "secondary"), selected = "de_novo"),
-              selectInput("drug_gene", "Gene for scatter:", choices = NULL),
-              selectInput("drug_inhibitor", "Inhibitor for scatter:", choices = NULL)
-            )),
-            column(9, wellPanel(
+            column(12, wellPanel(
               h4("Summary"),
+              div(id = "drug_subset_wrap", selectInput("drug_subset", "AML Subset:", choices = c("All", "de_novo", "secondary"), selected = "de_novo")),
               uiOutput("drug_summary_ui"),
               plotOutput("drug_summary_dotplot", height = 500),
               p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
             ))
           ),
           fluidRow(
-            column(6, wellPanel(h4("VAF vs AUC Scatter"), plotOutput("drug_scatter_plot", height = 350))),
+            column(6, wellPanel(
+              h4("VAF vs AUC Scatter"),
+              fluidRow(
+                column(6, selectInput("drug_gene", "Gene for scatter:", choices = NULL)),
+                column(6, selectInput("drug_inhibitor", "Inhibitor for scatter:", choices = NULL))
+              ),
+              plotOutput("drug_scatter_plot", height = 350)
+            )),
             column(6, wellPanel(
               h4("Leave-One-Out Cross Validation"),
               p(em("RMSE = leave-one-out prediction error in AUC units.")),
@@ -403,6 +422,14 @@ server <- function(input, output, session) {
 
   is_meta4 <- reactive(identical(input$main_nav, "meta_aml4"))
 
+  output$meta4_fallback_banner <- renderUI({
+    if (identical(input$main_nav, "meta_aml4") && !meta4_uses_dedicated_file) {
+      div(class = "alert alert-warning", role = "alert", style = "margin-bottom: 1em;",
+        strong("Meta AML4 data file not found."), " Add ", code("AML_Meta_Cohort.rds"), " (or ", code("AML_Meta_Cohort.RData"), ") to the app directory and redeploy. This tab is currently showing the Benard et al. (2021) dataset."
+      )
+    }
+  })
+
   observeEvent(input$main_nav, {
     nav <- input$main_nav
     if (identical(nav, "meta_aml4")) {
@@ -432,7 +459,7 @@ server <- function(input, output, session) {
     as.data.frame(df, stringsAsFactors = FALSE)
   })
 
-  # Tell client to hide loading overlay when data is ready (overlay shown on tab click in JS)
+  # Tell client to hide loading overlay when data is ready (overlay shown on Benard et al. (2021) / 2026 tab click in JS)
   observe({
     req(filtered_data(), input$main_nav %in% c("analyses", "meta_aml4"))
     session$sendCustomMessage("dataReady", input$main_nav)
@@ -543,21 +570,22 @@ server <- function(input, output, session) {
       col <- if (use_meta4) META4_VAR_COL else ONCO_VAR_COL
       vtypes <- unique(as.character(temp_dat[temp_dat != ""]))
       for (vt in setdiff(vtypes, names(col))) col[vt] <- "#80796BFF"
+      # Vectorized alter_fun for performance with >100 rows/columns (avoids cell_fun warning)
       alter_fun_list <- list(
-        background = function(...) NULL,
-        Deletion = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Deletion"], col = "#374E55FF")),
-        INDEL = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["INDEL"], col = "#DF8F44FF")),
-        Indel = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Indel"], col = "#DF8F44FF")),
-        Insertion = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Insertion"], col = "#00A1D5FF")),
-        ITD = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["ITD"], col = "#79AF97FF")),
-        SNV = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["SNV"], col = "#B24745FF")),
-        Splicing = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Splicing"], col = "#6A6599FF")),
-        PTD = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["PTD"], col = "tan")),
-        Other = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Other"], col = "#80796BFF")),
-        Unknown = function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Unknown"], col = "#80796BFF"))
+        background = function(x, y, w, h) NULL,
+        Deletion = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Deletion"], col = "#374E55FF")) },
+        INDEL = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["INDEL"], col = "#DF8F44FF")) },
+        Indel = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Indel"], col = "#DF8F44FF")) },
+        Insertion = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Insertion"], col = "#00A1D5FF")) },
+        ITD = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["ITD"], col = "#79AF97FF")) },
+        SNV = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["SNV"], col = "#B24745FF")) },
+        Splicing = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Splicing"], col = "#6A6599FF")) },
+        PTD = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["PTD"], col = "tan")) },
+        Other = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Other"], col = "#80796BFF")) },
+        Unknown = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Unknown"], col = "#80796BFF")) }
       )
       for (vt in setdiff(vtypes, names(alter_fun_list))) {
-        alter_fun_list[[vt]] <- (function(fc) function(x, y, w, h) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = fc, col = fc)))(col[vt])
+        alter_fun_list[[vt]] <- (function(fc) function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = fc, col = fc)) })(col[vt])
       }
       if (is.null(anno_df) || nrow(anno_df) == 0) {
         ha <- NULL
@@ -593,7 +621,7 @@ server <- function(input, output, session) {
         col = col,
         row_names_side = "right",
         bottom_annotation = ha,
-        alter_fun_is_vectorized = FALSE,
+        alter_fun_is_vectorized = TRUE,
         alter_fun = alter_fun_list
       )
       ComplexHeatmap::draw(fig1B)
@@ -1312,13 +1340,27 @@ server <- function(input, output, session) {
   })
 
   # Drug Sensitivity tab (BeatAML2)
-  beataml_data <- reactive({
+  # Two distinct datasets: 2026 = all samples in inhibitor_auc; 2021 = waves 1+2 only (from clinical)
+  beataml_full <- reactive({
     if (!exists("load_beataml2")) return(NULL)
     load_beataml2()
   })
 
+  beataml_wave12 <- reactive({
+    b <- beataml_full()
+    if (is.null(b) || !b$ok) return(NULL)
+    if (exists("subset_beataml_to_wave12")) return(subset_beataml_to_wave12(b))
+    b
+  })
+
+  beataml_for_drug <- reactive({
+    if (identical(input$main_nav, "meta_aml4")) return(beataml_full())
+    return(beataml_wave12())
+  })
+
   drug_correlations <- reactive({
-    b <- beataml_data()
+    input$main_nav
+    b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_correlations")) return(NULL)
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
@@ -1326,7 +1368,8 @@ server <- function(input, output, session) {
   })
 
   drug_loo <- reactive({
-    b <- beataml_data()
+    input$main_nav
+    b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_loo")) return(NULL)
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
@@ -1334,7 +1377,7 @@ server <- function(input, output, session) {
   })
 
   observe({
-    b <- beataml_data()
+    b <- beataml_for_drug()
     corr <- drug_correlations()
     if (!is.null(corr) && nrow(corr) > 0) {
       genes <- sort(unique(corr$Gene))
@@ -1345,14 +1388,16 @@ server <- function(input, output, session) {
   })
 
   output$drug_summary_ui <- renderUI({
-    b <- beataml_data()
+    input$main_nav
+    b <- beataml_for_drug()
     if (is.null(b)) return(p("BeatAML2 data not loaded. Run setup_beataml2.R to download."))
     if (!b$ok) return(p(style = "color:red", b$msg))
     corr <- drug_correlations()
     n_sig_p <- if (!is.null(corr) && nrow(corr) > 0) sum(corr$p_value < 0.05) else 0
     n_sig_q <- if (!is.null(corr) && nrow(corr) > 0) sum(corr$q_value < 0.1) else 0
+    wave_note <- if (identical(input$main_nav, "analyses")) " (waves 1+2)" else " (all waves)"
     p(
-      "Samples with mutation + drug data: ", length(b$overlap_samples), " | ",
+      "Samples with mutation + drug data: ", length(b$overlap_samples), wave_note, " | ",
       "Drug-gene pairs analyzed: ", if (!is.null(corr)) nrow(corr) else 0, " | ",
       "Significant (p < 0.05): ", n_sig_p, " | ",
       "Significant (FDR q < 0.1): ", n_sig_q
@@ -1394,7 +1439,7 @@ server <- function(input, output, session) {
     if (is.null(drug) || drug == "" || is.null(gene) || gene == "") {
       return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select inhibitor and gene"))
     }
-    b <- beataml_data()
+    b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples

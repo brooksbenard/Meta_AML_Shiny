@@ -6,7 +6,9 @@
 load_beataml2 <- function(data_dir = file.path(getwd(), "beataml2_data")) {
   mutations_path <- file.path(data_dir, "mutations.txt")
   auc_path <- file.path(data_dir, "inhibitor_auc.txt")
+  # Clinical: accept setup name or original BeatAML2 filename
   clinical_path <- file.path(data_dir, "clinical.xlsx")
+  if (!file.exists(clinical_path)) clinical_path <- file.path(data_dir, "beataml_wv1to4_clinical.xlsx")
 
   if (!file.exists(mutations_path) || !file.exists(auc_path)) {
     return(list(ok = FALSE, msg = "BeatAML2 data not found. Run setup_beataml2.R to download."))
@@ -37,13 +39,31 @@ load_beataml2 <- function(data_dir = file.path(getwd(), "beataml2_data")) {
   auc$auc <- as.numeric(auc$auc)
   auc <- auc[!is.na(auc$auc) & !is.na(auc$Sample) & auc$Sample != "", , drop = FALSE]
 
-  # Clinical for subset
+  # Clinical for subset and wave (BeatAML2: waves 1–4; Benard et al. (2021) uses waves 1+2 only)
   clin <- NULL
+  wave12_sample_ids <- NULL
   if (file.exists(clinical_path) && requireNamespace("readxl", quietly = TRUE)) {
     clin <- as.data.frame(readxl::read_excel(clinical_path), stringsAsFactors = FALSE)
     clin$Sample <- as.character(clin$dbgap_dnaseq_sample)
     na_idx <- clin$Sample == "" | is.na(clin$Sample)
     clin$Sample[na_idx] <- as.character(clin$dbgap_rnaseq_sample[na_idx])
+    # BeatAML2 clinical has "cohort" column: Waves1+2, Both, Waves3+4 (https://biodev.github.io/BeatAML2/)
+    cohort_col <- match("cohort", colnames(clin), nomatch = 0)
+    if (cohort_col > 0) {
+      coh <- as.character(clin[[cohort_col]])
+      wave_1_2 <- coh %in% c("Waves1+2", "Both")
+      wave12_sample_ids <- unique(clin$Sample[wave_1_2 & !is.na(clin$Sample) & clin$Sample != ""])
+    } else {
+      # Fallback: try wave column if cohort not present
+      wave_col <- grep("wave", colnames(clin), ignore.case = TRUE)[1]
+      if (length(wave_col) && !is.na(wave_col)) {
+        w <- clin[[wave_col]]
+        w_num <- suppressWarnings(as.numeric(w))
+        wave_1_2 <- w %in% c(1, 2, "1", "2", "Wave 1", "Wave 2", "W1", "W2") |
+          (is.numeric(w_num) & !is.na(w_num) & w_num >= 1 & w_num <= 2)
+        wave12_sample_ids <- unique(clin$Sample[wave_1_2 & !is.na(clin$Sample) & clin$Sample != ""])
+      }
+    }
   }
 
   # Merge: drug-gene pairs with both mutation and AUC
@@ -61,7 +81,32 @@ load_beataml2 <- function(data_dir = file.path(getwd(), "beataml2_data")) {
     auc = auc,
     clinical = clin,
     overlap_samples = overlap_samples,
+    wave12_sample_ids = wave12_sample_ids,
     data_dir = data_dir
+  )
+}
+
+# Return a BeatAML list restricted to wave 1+2 samples (for Benard et al. (2021) tab).
+# If wave12_sample_ids is NULL or empty, returns the full beataml unchanged.
+subset_beataml_to_wave12 <- function(beataml) {
+  if (is.null(beataml) || !beataml$ok) return(beataml)
+  ids <- beataml$wave12_sample_ids
+  if (is.null(ids) || length(ids) == 0) return(beataml)
+  mut_sub <- beataml$mutations[beataml$mutations$Sample %in% ids, , drop = FALSE]
+  auc_sub <- beataml$auc[beataml$auc$Sample %in% ids, , drop = FALSE]
+  overlap_sub <- intersect(unique(mut_sub$Sample), unique(auc_sub$Sample))
+  clin_sub <- NULL
+  if (!is.null(beataml$clinical) && nrow(beataml$clinical) > 0) {
+    clin_sub <- beataml$clinical[beataml$clinical$Sample %in% ids, , drop = FALSE]
+  }
+  list(
+    ok = TRUE,
+    mutations = mut_sub,
+    auc = auc_sub,
+    clinical = clin_sub,
+    overlap_samples = overlap_sub,
+    wave12_sample_ids = ids,
+    data_dir = beataml$data_dir
   )
 }
 

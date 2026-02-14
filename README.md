@@ -2,8 +2,8 @@
 
 Interactive Shiny app for exploring acute myeloid leukemia (AML) mutational data. Two data sources:
 
-- **Analyses** — Data from Benard et al. (2021) *Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia*, Nature Communications (~2,800 patients, 12 cohorts).
-- **Meta AML4** — The four largest AML datasets as of 2026 merged into one cohort (same analyses and filters).
+- **Benard et al. (2021)** — Data from Benard et al. (2021) *Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia*, Nature Communications (~2,800 patients, 12 cohorts).
+- **Meta AML4** — Merged cohort of TCGA LAML (~200), BeatAML2 (805), AML-SG (1,540), and UK-NCRI (2,113) patients (~4,660 combined). Same analyses and filters.
 
 ## Quick start
 
@@ -15,7 +15,7 @@ Place the main dataset in this directory:
 
 Optional (for the Meta AML4 tab):
 
-- **`AML_Meta_Cohort.RData`** or **`AML_Meta_Cohort.rds`** — Merged four-cohort data. If missing, the Meta AML4 tab falls back to the Analyses dataset.
+- **`AML_Meta_Cohort.RData`** or **`AML_Meta_Cohort.rds`** — Merged four-cohort data. If missing, the Meta AML4 tab falls back to the Benard et al. (2021) dataset.
 
 ### 2. Run the app
 
