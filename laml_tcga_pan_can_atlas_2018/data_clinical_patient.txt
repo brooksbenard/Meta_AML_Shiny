@@ -1,0 +1,205 @@
+#Patient Identifier	Subtype	TCGA PanCanAtlas Cancer Type Acronym	Other Patient ID	Diagnosis Age	Sex	Neoplasm Disease Stage American Joint Committee on Cancer Code	American Joint Committee on Cancer Publication Version Type	Last Communication Contact from Initial Pathologic Diagnosis Date	Birth from Initial Pathologic Diagnosis Date	Last Alive Less Initial Pathologic Diagnosis Date Calculated Day Value	Ethnicity Category	Form completion date	Neoadjuvant Therapy Type Administered Prior To Resection Text	ICD-10 Classification	International Classification of Diseases for Oncology, Third Edition ICD-O-3 Histology Code	International Classification of Diseases for Oncology, Third Edition ICD-O-3 Site Code	Informed consent verified	New Neoplasm Event Post Initial Therapy Indicator	American Joint Committee on Cancer Metastasis Stage Code	Neoplasm Disease Lymph Node Stage American Joint Committee on Cancer Code	American Joint Committee on Cancer Tumor Stage Code	Person Neoplasm Cancer Status	Primary Lymph Node Presentation Assessment	Prior Diagnosis	Race Category	Radiation Therapy	Patient Weight	In PanCan Pathway Analysis	Overall Survival Status	Overall Survival (Months)	Disease-specific Survival status	Months of disease-specific survival	Disease Free Status	Disease Free (Months)	Progression Free Status	Progress Free Survival (Months)
+#Identifier to uniquely specify a patient.	Subtype	Text field to hold cancer type acronym used by TCGA PanCanAtlas.	Legacy DMP patient identifier (DMPnnnn)	Age at which a condition or disease was first diagnosed.	Sex	The extent of a cancer, especially whether the disease has spread from the original site to other parts of the body based on AJCC staging criteria.	The version or edition of the American Joint Committee on Cancer Cancer Staging Handbooks, a publication by the group formed for the purpose of developing a system of clinical staging for cancer that is acceptable to the American medical profession and is compatible with other accepted classifications.	Time interval from the date of last followup to the date of initial pathologic diagnosis, represented as a calculated number of days..	Time interval from a person's date of birth to the date of initial pathologic diagnosis, represented as a calculated number of days.	Time interval from the last day on which a person is known to be alive to the date of initial pathologic diagnosis, represented as a calculated number of days.	The text for reporting information about ethnicity.	Form completion date	Text term to describe the patient's history of neoadjuvant treatment and the kind of treatment given prior to resection of the tumor.	10th revision of the International Statistical Classification of Diseases and Related Health Problems.	The third edition of the International Classification of Diseases for Oncology, published in 2000, used principally in tumor and cancer registries for coding the site (topography) and the histology (morphology) of neoplasms._The study of the structure of the cells and their arrangement to constitute tissues and, finally, the association among these to form organs.  In pathology, the microscopic process of identifying normal and abnormal morphologic characteristics in tissues, by employing various cytochemical and immunocytochemical stains._A system of numbered categories for representation of data.	The third edition of the International Classification of Diseases for Oncology, published in 2000, used principally in tumor and cancer registries for coding the site (topography) and the histology (morphology) of neoplasms._The description of an anatomical region or of a body part._Named locations of, or within, the body._A system of numbered categories for representation of data.	Informed consent verified	Yes/No/Unknown indicator to identify whether a patient has had a new tumor event after initial treatment.	Code to represent the defined absence or presence of distant spread or metastases (M) to locations via vascular channels or lymphatics beyond the regional lymph nodes, using criteria established by the American Joint Committee on Cancer (AJCC).	The codes that represent the stage of cancer based on the nodes present (N stage) according to criteria based on multiple editions of the AJCC's Cancer Staging Manual.	Code of pathological T (primary tumor) to define the size or contiguous extension of the primary tumor (T), using staging criteria from the American Joint Committee on Cancer (AJCC).	Person neoplasm cancer status.	Primary lymph node presentation assessment.	Prior diagnosis.	The text for reporting information about race.	Radiation Therapy.	Weight measured in kilograms.	Patient Part of PanCan Pathway Analysis	Overall patient survival status.	Overall survival in months since initial diagonosis.	The time period usually begins at the time of diagnosis or at the start of treatment and ends at the time of death.	The time period (months) usually begins at the time of diagnosis or at the start of treatment and ends at the time of death.	Disease free status since initial treatment.	Disease free (months) since initial treatment.	Progression Free Status	Progress Free Survival (Months)
+#STRING	STRING	STRING	STRING	NUMBER	STRING	STRING	STRING	NUMBER	NUMBER	NUMBER	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	STRING	NUMBER	STRING	STRING	NUMBER	STRING	NUMBER	STRING	NUMBER	STRING	NUMBER
+#1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	9	1	1	1	1	1	1	1
+PATIENT_ID	SUBTYPE	CANCER_TYPE_ACRONYM	OTHER_PATIENT_ID	AGE	SEX	AJCC_PATHOLOGIC_TUMOR_STAGE	AJCC_STAGING_EDITION	DAYS_LAST_FOLLOWUP	DAYS_TO_BIRTH	DAYS_TO_INITIAL_PATHOLOGIC_DIAGNOSIS	ETHNICITY	FORM_COMPLETION_DATE	HISTORY_NEOADJUVANT_TRTYN	ICD_10	ICD_O_3_HISTOLOGY	ICD_O_3_SITE	INFORMED_CONSENT_VERIFIED	NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT	PATH_M_STAGE	PATH_N_STAGE	PATH_T_STAGE	PERSON_NEOPLASM_CANCER_STATUS	PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT	PRIOR_DX	RACE	RADIATION_THERAPY	WEIGHT	IN_PANCANPATHWAYS_FREEZE	OS_STATUS	OS_MONTHS	DSS_STATUS	DSS_MONTHS	DFS_STATUS	DFS_MONTHS	PFS_STATUS	PFS_MONTHS
+TCGA-AB-2989		LAML																										No	1:DECEASED	11.9998685						
+TCGA-AB-3008	LAML	LAML																										Yes	1:DECEASED	27.02436138						
+TCGA-AB-2863	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2844	LAML	LAML																										Yes	1:DECEASED	4.010914949						
+TCGA-AB-2955	LAML	LAML																										Yes	1:DECEASED	16.07653615						
+TCGA-AB-2897	LAML	LAML																										Yes	0:LIVING	7.988953546	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-3012	LAML	LAML																										Yes	0:LIVING	62.0376763	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2837	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-3006	LAML	LAML																										Yes	1:DECEASED	15.94503074						
+TCGA-AB-2990	LAML	LAML																										Yes	0:LIVING	15.02449288	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2865		LAML																										No	1:DECEASED	2.005457474						
+TCGA-AB-2878		LAML																										No	1:DECEASED	11.9998685						
+TCGA-AB-2886	LAML	LAML																										Yes	0:LIVING	5.950619719	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2825	LAML	LAML																										Yes	1:DECEASED	6.969786633						
+TCGA-AB-2954	LAML	LAML																										Yes	0:LIVING	49.05151724	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2932	LAML	LAML																										Yes	0:LIVING	0	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2861	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2877	LAML	LAML																										Yes	0:LIVING	20.9751126	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2854	LAML	LAML																										Yes	1:DECEASED	12.03274485						
+TCGA-AB-2965	LAML	LAML																										Yes	1:DECEASED	11.01357793						
+TCGA-AB-2983	LAML	LAML																										Yes	1:DECEASED	11.01357793						
+TCGA-AB-2871	LAML	LAML																										Yes	0:LIVING	5.030081862	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2858	LAML	LAML																										Yes	1:DECEASED	18.96965513						
+TCGA-AB-2833		LAML																										No	1:DECEASED	14.99161653						
+TCGA-AB-2831		LAML																										No	1:DECEASED	21.04086531						
+TCGA-AB-3002	LAML	LAML																										Yes	1:DECEASED	47.04605977						
+TCGA-AB-2807	LAML	LAML																										Yes	1:DECEASED	5.950619719						
+TCGA-AB-2934	LAML	LAML																										Yes	0:LIVING	0.920537857	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2940	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2909	LAML	LAML																										Yes	0:LIVING	0.986290561	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2815	LAML	LAML																										Yes	1:DECEASED	27.02436138						
+TCGA-AB-2945		LAML																										No	1:DECEASED	7.988953546						
+TCGA-AB-2973	LAML	LAML																										Yes	1:DECEASED	20.02169839						
+TCGA-AB-2905		LAML																										No	0:LIVING	52.96380314	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2816	LAML	LAML																										Yes	1:DECEASED	8.05470625						
+TCGA-AB-2922		LAML																										No	1:DECEASED	0						
+TCGA-AB-2868	LAML	LAML																										Yes	1:DECEASED	4.964329158						
+TCGA-AB-2813	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2889	LAML	LAML																										Yes	0:LIVING	9.99441102	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2988	LAML	LAML																										Yes	1:DECEASED	0.986290561						
+TCGA-AB-2829		LAML																										No	1:DECEASED	8.975244107						
+TCGA-AB-2901	LAML	LAML																										Yes	0:LIVING	1.93970477	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2841	LAML	LAML																										Yes	1:DECEASED	46.05976921						
+TCGA-AB-2859		LAML																										No	1:DECEASED	9.99441102						
+TCGA-AB-2999	LAML	LAML																										Yes	0:LIVING	57.04047079	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2845	LAML	LAML																										Yes	1:DECEASED	9.99441102						
+TCGA-AB-3009	LAML	LAML																										Yes	1:DECEASED	18.96965513						
+TCGA-AB-2896	LAML	LAML																										Yes	1:DECEASED	7.035539337						
+TCGA-AB-2920	LAML	LAML																										Yes	1:DECEASED	12.03274485						
+TCGA-AB-2914	LAML	LAML																										Yes	0:LIVING	26.03807082	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2950	LAML	LAML																										Yes	0:LIVING	10.06016372	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2977	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2930	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2956	LAML	LAML																										Yes	1:DECEASED	6.016372423						
+TCGA-AB-2985	LAML	LAML																										Yes	1:DECEASED	8.975244107						
+TCGA-AB-2864		LAML																										No	1:DECEASED	18.96965513						
+TCGA-AB-2802		LAML																										No	1:DECEASED	11.9998685						
+TCGA-AB-2855	LAML	LAML																										Yes	1:DECEASED	6.969786633						
+TCGA-AB-2918		LAML																										No	1:DECEASED							
+TCGA-AB-2821	LAML	LAML																										Yes	1:DECEASED	27.02436138						
+TCGA-AB-3005	LAML	LAML																										Yes	0:LIVING	69.04033928	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2893		LAML																										No	1:DECEASED	6.969786633						
+TCGA-AB-2912	LAML	LAML																										Yes	1:DECEASED	9.008120459						
+TCGA-AB-2994		LAML																										No	0:LIVING	59.11168097	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2936	LAML	LAML																										Yes	0:LIVING	1.93970477	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2963	LAML	LAML																										Yes	1:DECEASED	53.98297005						
+TCGA-AB-2935	LAML	LAML																										Yes	1:DECEASED	2.005457474						
+TCGA-AB-2804		LAML																										No	0:LIVING	84.06483217	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2870	LAML	LAML																										Yes	1:DECEASED	5.030081862						
+TCGA-AB-2908	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2882	LAML	LAML																										Yes	1:DECEASED	11.9998685						
+TCGA-AB-2839	LAML	LAML																										Yes	1:DECEASED	15.97790709						
+TCGA-AB-2944	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2875	LAML	LAML																										Yes	0:LIVING	6.969786633	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2843		LAML																										No	1:DECEASED	7.068415689						
+TCGA-AB-2967	LAML	LAML																										Yes	0:LIVING	34.02702436	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2904	LAML	LAML																										Yes	1:DECEASED	16.99707401						
+TCGA-AB-2981		LAML																										No	0:LIVING	16.01078344	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2835	LAML	LAML																										Yes	0:LIVING	55.00213696	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2916	LAML	LAML																										Yes	0:LIVING	28.9969425	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-3000	LAML	LAML																										Yes	0:LIVING	41.0625637	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2992	LAML	LAML																										Yes	1:DECEASED	56.08705658						
+TCGA-AB-2812	LAML	LAML																										Yes	1:DECEASED	12.03274485						
+TCGA-AB-2972	LAML	LAML																										Yes	1:DECEASED	0.986290561						
+TCGA-AB-2900	LAML	LAML																										Yes	1:DECEASED	6.049248775						
+TCGA-AB-2938	LAML	LAML																										Yes	1:DECEASED	9.99441102						
+TCGA-AB-2894		LAML																										No	1:DECEASED	5.950619719						
+TCGA-AB-2942	LAML	LAML																										Yes	0:LIVING	21.07374166	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2884	LAML	LAML																										Yes	1:DECEASED	24.03261334						
+TCGA-AB-2828	LAML	LAML																										Yes	0:LIVING	75.08958806	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2998	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2946	LAML	LAML																										Yes	0:LIVING		0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2927	LAML	LAML																										Yes	1:DECEASED	2.958871684						
+TCGA-AB-2890	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2827		LAML																										No	1:DECEASED	8.975244107						
+TCGA-AB-2892		LAML																										No	0:LIVING	31.00239997	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2810	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2824	LAML	LAML																										Yes	1:DECEASED	0.986290561						
+TCGA-AB-2860	LAML	LAML																										Yes	1:DECEASED	14.03820232						
+TCGA-AB-2847		LAML																										No	1:DECEASED	19.98882204						
+TCGA-AB-2976	LAML	LAML																										Yes	1:DECEASED	30.08186212						
+TCGA-AB-2986	LAML	LAML																										Yes	1:DECEASED	6.969786633						
+TCGA-AB-2866	LAML	LAML																										Yes	1:DECEASED	5.030081862						
+TCGA-AB-2984	LAML	LAML																										Yes	0:LIVING	38.03793931	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2924	LAML	LAML																										Yes	0:LIVING	2.958871684	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2978	LAML	LAML																										Yes	0:LIVING	22.98057008	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2910	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-3011	LAML	LAML																										Yes	0:LIVING	61.9719236	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2913	LAML	LAML																										Yes	0:LIVING	39.97764408	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2822	LAML	LAML																										Yes	1:DECEASED	31.98869054						
+TCGA-AB-2957		LAML																										No	0:LIVING	20.02169839	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2806	LAML	LAML																										Yes	1:DECEASED	31.06815268						
+TCGA-AB-2931	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2952	LAML	LAML																										Yes	1:DECEASED	1.019166913						
+TCGA-AB-2906		LAML																										No	0:LIVING	18.96965513	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2853	LAML	LAML																										Yes	1:DECEASED	2.925995332						
+TCGA-AB-2805	LAML	LAML																										Yes	1:DECEASED	18.96965513						
+TCGA-AB-2966	LAML	LAML																										Yes	1:DECEASED	28.07640464						
+TCGA-AB-2838	LAML	LAML																										Yes	1:DECEASED	11.9998685						
+TCGA-AB-2874	LAML	LAML																										Yes	0:LIVING	13.01903541	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2857	LAML	LAML																										Yes	1:DECEASED	10.06016372						
+TCGA-AB-2980	LAML	LAML																										Yes	0:LIVING	22.98057008	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2834	LAML	LAML																										Yes	1:DECEASED	8.05470625						
+TCGA-AB-2993	LAML	LAML																										Yes	1:DECEASED	25.0189039						
+TCGA-AB-2939	LAML	LAML																										Yes	0:LIVING	14.95874018	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2949	LAML	LAML																										Yes	0:LIVING	22.98057008	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2842	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2899	LAML	LAML																										Yes	1:DECEASED	22.06003222						
+TCGA-AB-2808	LAML	LAML																										Yes	0:LIVING	94.05924319	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2872	LAML	LAML																										Yes	0:LIVING	20.9751126	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2885	LAML	LAML																										Yes	1:DECEASED	7.035539337						
+TCGA-AB-2895	LAML	LAML																										Yes	1:DECEASED	5.030081862						
+TCGA-AB-2933	LAML	LAML																										Yes	1:DECEASED	4.010914949						
+TCGA-AB-2943	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2921	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2876		LAML																										No	0:LIVING	40.07627314	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2869	LAML	LAML																										Yes	0:LIVING	7.988953546	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2911	LAML	LAML																										Yes	0:LIVING	38.99135352	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2851	LAML	LAML																										Yes	1:DECEASED	7.956077194						
+TCGA-AB-2818	LAML	LAML																										Yes	1:DECEASED	9.961534668						
+TCGA-AB-2996	LAML	LAML																										Yes	0:LIVING	51.97751258	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2929	LAML	LAML																										Yes	1:DECEASED	4.043791301						
+TCGA-AB-2830	LAML	LAML																										Yes	1:DECEASED	9.040996811						
+TCGA-AB-2814	LAML	LAML																										Yes	1:DECEASED	26.03807082						
+TCGA-AB-2846	LAML	LAML																										Yes	1:DECEASED	46.09264556						
+TCGA-AB-2979		LAML																										No	0:LIVING	22.06003222	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2880	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2848	LAML	LAML																										Yes	1:DECEASED	14.95874018						
+TCGA-AB-3001	LAML	LAML																										Yes	0:LIVING	51.97751258	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2820	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2926		LAML																										No	1:DECEASED	15.02449288						
+TCGA-AB-2970	LAML	LAML																										Yes	1:DECEASED	10.02728737						
+TCGA-AB-2823	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2867	LAML	LAML																										Yes	1:DECEASED	6.049248775						
+TCGA-AB-2917	LAML	LAML																										Yes	0:LIVING	39.97764408	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2826	LAML	LAML																										Yes	1:DECEASED	24.03261334						
+TCGA-AB-2862	LAML	LAML																										Yes	0:LIVING	47.01318342	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2836	LAML	LAML																										Yes	1:DECEASED	17.02995036						
+TCGA-AB-2974		LAML																										No	1:DECEASED	3.024624388						
+TCGA-AB-2987	LAML	LAML																										Yes	1:DECEASED	6.049248775						
+TCGA-AB-2991	LAML	LAML																										Yes	0:LIVING	60.03221883	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2856		LAML																										No	1:DECEASED	4.931452806						
+TCGA-AB-2959	LAML	LAML																										Yes	1:DECEASED	16.07653615						
+TCGA-AB-2907		LAML																										No	1:DECEASED							
+TCGA-AB-3007	LAML	LAML																										Yes	0:LIVING	51.97751258	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2887	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2948	LAML	LAML																										Yes	1:DECEASED	19.06828418						
+TCGA-AB-2809		LAML																										No	1:DECEASED	2.038333827						
+TCGA-AB-2879	LAML	LAML																										Yes	0:LIVING	8.05470625	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2995	LAML	LAML																										Yes	0:LIVING	50.99122201	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2997		LAML																										No	1:DECEASED							
+TCGA-AB-2915	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2898	LAML	LAML																										Yes	0:LIVING	12.92040635	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2947		LAML																										No	0:LIVING	1.019166913	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2964	LAML	LAML																										Yes	0:LIVING	41.98310156	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2982	LAML	LAML																										Yes	0:LIVING	4.931452806	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2883		LAML																										No	0:LIVING	23.99973699	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2941	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2881	LAML	LAML																										Yes	0:LIVING	12.92040635	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2803	LAML	LAML																										Yes	1:DECEASED	26.03807082						
+TCGA-AB-2873	LAML	LAML																										Yes	0:LIVING	8.975244107	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2811	LAML	LAML																										Yes	1:DECEASED	7.988953546						
+TCGA-AB-2968		LAML																										No	1:DECEASED	15.05736923						
+TCGA-AB-2919	LAML	LAML																										Yes	0:LIVING	2.005457474	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2832	LAML	LAML																										Yes	1:DECEASED	11.9998685						
+TCGA-AB-2903	LAML	LAML																										Yes	1:DECEASED	0						
+TCGA-AB-2969	LAML	LAML																										Yes	0:LIVING	37.05164875	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2937	LAML	LAML																										Yes	1:DECEASED	7.068415689						
+TCGA-AB-2819	LAML	LAML																										Yes	0:LIVING	82.05937469	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2925	LAML	LAML																										Yes	1:DECEASED	7.988953546						
+TCGA-AB-2928	LAML	LAML																										Yes	1:DECEASED							
+TCGA-AB-2849	LAML	LAML																										Yes	0:LIVING	72.98550153	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2817	LAML	LAML																										Yes	1:DECEASED	8.975244107						
+TCGA-AB-2891		LAML																										No	1:DECEASED							
+TCGA-AB-2923		LAML																										No	1:DECEASED	1.019166913						
+TCGA-AB-2888	LAML	LAML																										Yes	0:LIVING	10.98070158	0:ALIVE OR DEAD TUMOR FREE					
+TCGA-AB-2850		LAML																										No	1:DECEASED	2.005457474						
+TCGA-AB-2971	LAML	LAML																										Yes	1:DECEASED	26.03807082						
+TCGA-AB-2840	LAML	LAML																										Yes	1:DECEASED	0.920537857						
+TCGA-AB-2975	LAML	LAML																										Yes	1:DECEASED							
