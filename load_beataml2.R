@@ -232,20 +232,20 @@ compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5
   out
 }
 
-# Mut vs WT t-test for all gene-inhibitor pairs (n_mut >= 10); used for heatmap and precomputation
+# Mut vs WT t-test for all gene-inhibitor pairs (n_mut >= 5 with AUC data); used for heatmap and precomputation
 compute_mut_wt_all <- function(beataml, subset = "de_novo") {
   if (is.null(beataml) || !beataml$ok || !"auc" %in% names(beataml) || !"mutations" %in% names(beataml)) return(NULL)
   allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(beataml, subset) else beataml$overlap_samples
   auc_wide <- beataml$auc[beataml$auc$Sample %in% allowed, , drop = FALSE]
   mut_wide <- beataml$mutations[beataml$mutations$Sample %in% allowed, , drop = FALSE]
   if (nrow(auc_wide) == 0 || nrow(mut_wide) == 0) return(NULL)
-  genes <- names(which(table(mut_wide$Gene) >= 10))
+  genes <- names(which(table(mut_wide$Gene) >= 5))
   inhibitors <- unique(auc_wide$inhibitor)
   if (length(genes) == 0 || length(inhibitors) == 0) return(NULL)
   res_list <- list()
   for (g in genes) {
     mut_samples <- unique(mut_wide$Sample[mut_wide$Gene == g])
-    if (length(mut_samples) < 10) next
+    if (length(mut_samples) < 5) next
     for (inh in inhibitors) {
       sub <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
       sub$mut <- sub$Sample %in% mut_samples
@@ -253,7 +253,7 @@ compute_mut_wt_all <- function(beataml, subset = "de_novo") {
       wt_auc <- sub$auc[!sub$mut]
       n_mut <- length(mut_auc)
       n_wt <- length(wt_auc)
-      if (n_mut < 10) next
+      if (n_mut < 5) next
       delta <- mean(mut_auc, na.rm = TRUE) - mean(wt_auc, na.rm = TRUE)
       tt <- tryCatch(t.test(mut_auc, wt_auc), error = function(e) NULL)
       pval <- if (!is.null(tt)) tt$p.value else NA_real_
