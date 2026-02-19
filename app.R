@@ -2,6 +2,9 @@
 # Meta AML Explorer - Shiny App for Exploratory Analysis of AML Mutational Data
 # Based on Benard et al. Nature Communications 2021
 # Uses base R only to avoid data.table/dplyr "Argument 'x' is not a vector: list" errors
+# NOTE: Benard et al. (2021) tab and final_data_matrix loading are commented out for a
+# simplified deploy; uncomment the block marked "Benard et al. (2021) data" and the
+# "Benard et al. (2021)" tabPanel to re-enable.
 # =============================================================================
 
 library(shiny)
@@ -14,6 +17,8 @@ has_survminer <- requireNamespace("survminer", quietly = TRUE)
 if (has_survminer) library(survminer)
 has_gridExtra <- requireNamespace("gridExtra", quietly = TRUE)
 if (has_gridExtra) library(gridExtra)
+has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
+if (has_patchwork) library(patchwork)
 has_ComplexHeatmap <- requireNamespace("ComplexHeatmap", quietly = TRUE)
 if (has_ComplexHeatmap) library(ComplexHeatmap)
 has_maxstat <- requireNamespace("maxstat", quietly = TRUE)
@@ -31,39 +36,41 @@ if (has_rentrez) library(rentrez)
 has_httr <- requireNamespace("httr", quietly = TRUE)
 if (has_httr) library(httr)
 
+# ---- Benard et al. (2021) data: commented out for simplified deploy (re-enable to add Benard tab) ----
 # Load data (app expects final_data_matrix.RData in the same directory as app.R)
-data_path <- file.path(getwd(), "final_data_matrix.RData")
-if (!file.exists(data_path)) {
-  stop("Data file not found. Place final_data_matrix.RData in the app directory and run the app from that directory.\n  Looked for: ", normalizePath(data_path, mustWork = FALSE))
-}
-load(data_path)
-
-# Convert to plain data.frame - CSV round-trip strips data.table/list columns
-tmp <- tempfile(fileext = ".csv")
-utils::write.csv(final_data_matrix, tmp, row.names = FALSE)
-final_data_matrix <- utils::read.csv(tmp, stringsAsFactors = FALSE)
-unlink(tmp)
-# Assign RTK-RAS Signaling to all FLT3 mutations if they lack mutation_category; homogenize RTK/RAS -> RTK-RAS
-if ("mutation_category" %in% colnames(final_data_matrix) && "Gene" %in% colnames(final_data_matrix)) {
-  final_data_matrix$mutation_category[final_data_matrix$mutation_category %in% c("RTK/RAS Signaling", "RTK-RAS Signaling")] <- "RTK-RAS Signaling"
-  flt3_idx <- which(final_data_matrix$Gene %in% c("FLT3", "FLT3-ITD", "FLT3-TKD", "FLT3-Other") &
-                    (is.na(final_data_matrix$mutation_category) | final_data_matrix$mutation_category == ""))
-  if (length(flt3_idx) > 0) {
-    final_data_matrix$mutation_category[flt3_idx] <- "RTK-RAS Signaling"
-  }
-}
-# Normalize Cohort and Subset for display across the app (Beat_AML -> Beat AML; de_novo -> De novo, etc.)
-if ("Cohort" %in% colnames(final_data_matrix)) {
-  final_data_matrix$Cohort[final_data_matrix$Cohort == "Beat_AML"] <- "Beat AML"
-}
-if ("Subset" %in% colnames(final_data_matrix)) {
-  final_data_matrix$Subset[is.na(final_data_matrix$Subset) | final_data_matrix$Subset == ""] <- "Other"
-  final_data_matrix$Subset[final_data_matrix$Subset %in% c("de_novo", "De_novo")] <- "De novo"
-  final_data_matrix$Subset[final_data_matrix$Subset == "secondary"] <- "Secondary"
-  final_data_matrix$Subset[final_data_matrix$Subset == "relapse"] <- "Relapse"
-  final_data_matrix$Subset[final_data_matrix$Subset %in% c("therapy", "tAML")] <- "Therapy"
-  final_data_matrix$Subset[final_data_matrix$Subset %in% c("other", "oAML", "unknown", "")] <- "Other"
-}
+# data_path <- file.path(getwd(), "final_data_matrix.RData")
+# if (!file.exists(data_path)) {
+#   stop("Data file not found. Place final_data_matrix.RData in the app directory and run the app from that directory.\n  Looked for: ", normalizePath(data_path, mustWork = FALSE))
+# }
+# load(data_path)
+# # Convert to plain data.frame - CSV round-trip strips data.table/list columns
+# tmp <- tempfile(fileext = ".csv")
+# utils::write.csv(final_data_matrix, tmp, row.names = FALSE)
+# final_data_matrix <- utils::read.csv(tmp, stringsAsFactors = FALSE)
+# unlink(tmp)
+# # Assign RTK-RAS Signaling to all FLT3 mutations if they lack mutation_category; homogenize RTK/RAS -> RTK-RAS
+# if ("mutation_category" %in% colnames(final_data_matrix) && "Gene" %in% colnames(final_data_matrix)) {
+#   final_data_matrix$mutation_category[final_data_matrix$mutation_category %in% c("RTK/RAS Signaling", "RTK-RAS Signaling")] <- "RTK-RAS Signaling"
+#   flt3_idx <- which(final_data_matrix$Gene %in% c("FLT3", "FLT3-ITD", "FLT3-TKD", "FLT3-Other") &
+#                     (is.na(final_data_matrix$mutation_category) | final_data_matrix$mutation_category == ""))
+#   if (length(flt3_idx) > 0) {
+#     final_data_matrix$mutation_category[flt3_idx] <- "RTK-RAS Signaling"
+#   }
+# }
+# # Normalize Cohort and Subset for display across the app (Beat_AML -> Beat AML; de_novo -> De novo, etc.)
+# if ("Cohort" %in% colnames(final_data_matrix)) {
+#   final_data_matrix$Cohort[final_data_matrix$Cohort == "Beat_AML"] <- "Beat AML"
+# }
+# if ("Subset" %in% colnames(final_data_matrix)) {
+#   final_data_matrix$Subset[is.na(final_data_matrix$Subset) | final_data_matrix$Subset == ""] <- "Other"
+#   final_data_matrix$Subset[final_data_matrix$Subset %in% c("de_novo", "De_novo")] <- "De novo"
+#   final_data_matrix$Subset[final_data_matrix$Subset == "secondary"] <- "Secondary"
+#   final_data_matrix$Subset[final_data_matrix$Subset == "relapse"] <- "Relapse"
+#   final_data_matrix$Subset[final_data_matrix$Subset %in% c("therapy", "tAML")] <- "Therapy"
+#   final_data_matrix$Subset[final_data_matrix$Subset %in% c("other", "oAML", "unknown", "")] <- "Other"
+# }
+# Stub when Benard tab is disabled (sidebar Cohort dropdown will show "All" only; Meta AML4 uses its own data)
+final_data_matrix <- data.frame(Sample = character(), Gene = character(), Gene_for_analysis = character(), Cohort = character(), Subset = character(), mutation_category = character(), stringsAsFactors = FALSE)
 
 # Normalize AML_Meta_Cohort to match final_data_matrix column names so existing analyses work
 normalize_AML_Meta_Cohort <- function(d) {
@@ -119,6 +126,21 @@ normalize_AML_Meta_Cohort <- function(d) {
   if ("TUM_VAF" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$TUM_VAF)
   if ("t_vaf" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$t_vaf)
   if ("%_MUT_IN_TUM" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$"%_MUT_IN_TUM")
+  # TCGA VAF columns
+  if ("Tumor_VAF" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$Tumor_VAF) * 100
+  if ("tumor_vaf" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$tumor_vaf) * 100
+  if ("TumorVAF" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$TumorVAF) * 100
+  if ("Tumor_Alt_Allele_Freq" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$Tumor_Alt_Allele_Freq) * 100
+  if ("tumor_alt_allele_freq" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$tumor_alt_allele_freq) * 100
+  # TCGA GDC MAF: no precomputed VAF; derive from t_alt_count and t_ref_count (VAF = alt/(ref+alt) as %)
+  if (!"VAF" %in% colnames(d) && "t_alt_count" %in% colnames(d) && "t_ref_count" %in% colnames(d)) {
+    t_alt <- as.numeric(d$t_alt_count)
+    t_ref <- as.numeric(d$t_ref_count)
+    tot <- t_alt + t_ref
+    d$VAF <- ifelse(!is.na(tot) & tot > 0, 100 * t_alt / tot, NA_real_)
+  }
+  # TCGA WashU / other: TumorVAF_WU often 0-1
+  if ("TumorVAF_WU" %in% colnames(d) && !"VAF" %in% colnames(d)) d$VAF <- as.numeric(d$TumorVAF_WU) * 100
   if ("Cohort" %in% colnames(d)) {
     d$Cohort <- as.character(d$Cohort)
     d$Cohort[d$Cohort == "NCRI"] <- "UK-NCRI"
@@ -269,6 +291,18 @@ normalize_AML_Meta_Cohort <- function(d) {
   } else if ("ELN2017" %in% colnames(d)) {
     eln <- as.character(d$ELN2017)
     d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
+  } else if ("ELN_Risk" %in% colnames(d)) {
+    eln <- as.character(d$ELN_Risk)
+    d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
+  } else if ("ELN_risk" %in% colnames(d)) {
+    eln <- as.character(d$ELN_risk)
+    d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
+  } else if ("ELN" %in% colnames(d)) {
+    eln <- as.character(d$ELN)
+    d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
+  } else if ("ELN_2017" %in% colnames(d)) {
+    eln <- as.character(d$ELN_2017)
+    d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
   } else if ("Karyotype" %in% colnames(d)) d$Risk <- as.character(d$Karyotype)
   else d$Risk <- NA_character_
   # Clinical vars: WBC, Hemoglobin, Platelet, LDH, BM_blast_percent, PB_blast_percent
@@ -297,6 +331,19 @@ normalize_AML_Meta_Cohort <- function(d) {
   d
 }
 
+# Fallback mutation_category for genes not in reference (e.g. lower-frequency genes in Meta AML4); must be defined before AML_Meta_Cohort processing
+GENE_MUT_CAT_FALLBACK <- c(
+  SMC3 = "Chromatin/Cohesin", SMC1A = "Chromatin/Cohesin", STAG2 = "Chromatin/Cohesin", RAD21 = "Chromatin/Cohesin", NIPBL = "Chromatin/Cohesin",
+  ASXL2 = "Chromatin/Cohesin", ASXL1 = "Chromatin/Cohesin", EZH2 = "Chromatin/Cohesin", BCOR = "Chromatin/Cohesin", BCORL1 = "Chromatin/Cohesin", KDM6A = "Chromatin/Cohesin",
+  FBXW7 = "Tumor suppressors", TP53 = "Tumor suppressors", PHF6 = "Tumor suppressors", PIGA = "Other",
+  CBL = "RTK-RAS Signaling", CBLB = "RTK-RAS Signaling", KIT = "RTK-RAS Signaling", BRAF = "RTK-RAS Signaling", NF1 = "RTK-RAS Signaling", JAK2 = "RTK-RAS Signaling", JAK3 = "RTK-RAS Signaling", MPL = "RTK-RAS Signaling", CSF3R = "RTK-RAS Signaling",
+  SETBP1 = "Transcription", IKZF1 = "Transcription", GATA2 = "Transcription", ETV6 = "Transcription", WT1 = "Transcription",
+  TET2 = "DNA Methylation", IDH1 = "DNA Methylation", IDH2 = "DNA Methylation", DNMT3A = "DNA Methylation",
+  SRSF2 = "Splicing", U2AF1 = "Splicing", ZRSR2 = "Splicing", SF3B1 = "Splicing",
+  KRAS = "RTK-RAS Signaling", NRAS = "RTK-RAS Signaling", PTPN11 = "RTK-RAS Signaling",
+  RUNX1 = "Transcription", CEBPA = "Transcription", NPM1 = "NPM1"
+)
+
 # Load AML_Meta_Cohort_v2 (four cohorts merged) for Meta AML4 tab; fallback to v1 or final_data_matrix if missing
 AML_Meta_Cohort <- NULL
 meta4_uses_dedicated_file <- FALSE
@@ -323,6 +370,7 @@ if (file.exists(meta4_path_v2)) {
 }
 if (!is.null(AML_Meta_Cohort) && is.data.frame(AML_Meta_Cohort)) {
   AML_Meta_Cohort <- normalize_AML_Meta_Cohort(AML_Meta_Cohort)
+  if (!"mutation_category" %in% colnames(AML_Meta_Cohort)) AML_Meta_Cohort$mutation_category <- NA_character_
   # Classify genes in Meta AML4 using same mutation_category as Benard et al. (2021) (final_data_matrix)
   ref <- final_data_matrix[!is.na(final_data_matrix$mutation_category) & as.character(final_data_matrix$mutation_category) != "", c("Gene", "mutation_category"), drop = FALSE]
   if (nrow(ref) > 0) {
@@ -341,6 +389,12 @@ if (!is.null(AML_Meta_Cohort) && is.data.frame(AML_Meta_Cohort)) {
     if (length(mll_idx) > 0) {
       AML_Meta_Cohort$mutation_category[mll_idx] <- "Chromatin/Cohesin"
     }
+  }
+  # Fill missing mutation_category from fallback (e.g. SMC3, ASXL2, FBXW7) so all genes are colored in plots
+  miss <- is.na(AML_Meta_Cohort$mutation_category) | as.character(AML_Meta_Cohort$mutation_category) == ""
+  if (any(miss)) {
+    g <- as.character(AML_Meta_Cohort$Gene[miss])
+    AML_Meta_Cohort$mutation_category[miss] <- ifelse(g %in% names(GENE_MUT_CAT_FALLBACK), unname(GENE_MUT_CAT_FALLBACK[g]), "Other")
   }
 } else {
   AML_Meta_Cohort <- final_data_matrix
@@ -363,7 +417,8 @@ PAL_SUBSET <- c(
 PAL_MUT_CAT <- c(
   "DNA Methylation" = "#374E55FF", "Chromatin/Cohesin" = "#DF8F44FF",
   "RTK-RAS Signaling" = "#00A1D5FF", "Splicing" = "#B24745FF",
-  "Transcription" = "#79AF97FF", "NPM1" = "#80796BFF", "Tumor suppressors" = "#6A6599FF"
+  "Transcription" = "#79AF97FF", "NPM1" = "#80796BFF", "Tumor suppressors" = "#6A6599FF",
+  "Other" = "#9E9E9EFF"
 )
 PAL_RISK <- c(Adverse = "#E64B35FF", Intermediate = "#8491B4FF", Favorable = "#00A087FF", Unknown = "#767676FF")
 # Paper Figure 1B oncoprint colors (exact from manuscript code)
@@ -565,9 +620,9 @@ ui <- fluidPage(
     tabPanel("About", value = "about",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         h2("Welcome to Meta AML Explorer"),
-        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " and ", strong("Benard et al. (2021)"), " tabs offer slightly different aggregated data sources but the same core analyses:"),
+        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " tab offers cohort selection and core analyses:"),
         tags$ul(
-          tags$li("Cohort selection by AML type (e.g. de novo, secondary), dataset (e.g. UK-NCRI), karyotype (NK/Complex/Other), and minimum mutation frequency."),
+          tags$li("Cohort selection by AML type (e.g. de novo, secondary), dataset (e.g. UK-NCRI), karyotype (NK/Complex/Other), and minimum gene frequency (% of samples)."),
           tags$li("Single mutation associations (clinical variables, survival, hazard ratios)"),
           tags$li("Co-mutation (heatmap, odds-ratios, Kaplan-Meier by 2–3 genes)"),
           tags$li("Variant allele frequency (VAF) associations (clinical variables, survival, pairwise scatterplots)"),
@@ -582,9 +637,10 @@ ui <- fluidPage(
           p(style = "margin: 4px 0; line-height: 1.6;", strong("Beat AML"), " (805 patients) | ", tags$a("Tyner et al. (2022), Cancer Cell", href = "https://www.cell.com/cancer-cell/fulltext/S1535-6108(22)00312-9", target = "_blank"), " | ", tags$a("Data", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           p(style = "margin: 4px 0; line-height: 1.6; margin-bottom: 0;", strong("TCGA LAML"), " (200 patients) | ", tags$a("NEJM", href = "https://www.nejm.org/doi/full/10.1056/NEJMoa1301689", target = "_blank"), " | ", tags$a("Data", href = "https://www.cbioportal.org/", target = "_blank"))
         ),
-        h2("Benard et al. (2021) tab"),
-        p("Data from ", strong("Benard et al. (2021)"), " ", em("Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia."), " Nature Communications | ", tags$a("Paper", href = "https://www.nature.com/articles/s41467-021-27472-5", target = "_blank")),
-        p("The paper aggregates mutation calls, variant allele frequencies (VAF), and clinical outcomes from ~2,800 patients across 12 cohorts (TCGA, Beat AML/Tyner, Papaemmanuil, Majeti, and others) to link clonal architecture to prognosis and therapy response."),
+        # ---- Benard et al. (2021) tab: commented out for simplified deploy (re-enable with data load above) ----
+        # h2("Benard et al. (2021) tab"),
+        # p("Data from ", strong("Benard et al. (2021)"), " ", em("Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia."), " Nature Communications | ", tags$a("Paper", href = "https://www.nature.com/articles/s41467-021-27472-5", target = "_blank")),
+        # p("The paper aggregates mutation calls, variant allele frequencies (VAF), and clinical outcomes from ~2,800 patients across 12 cohorts (TCGA, Beat AML/Tyner, Papaemmanuil, Majeti, and others) to link clonal architecture to prognosis and therapy response."),
         h2("Caveats"),
         p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
         p("The current implementation does not account for copy number correction of variant allele frequencies (VAFs). A future implementation will incorporate copy number data to define and use cancer cell fractions of mutations instead of VAFs."),
@@ -599,7 +655,7 @@ ui <- fluidPage(
       )
     ),
     tabPanel("Meta AML4", value = "meta_aml4"),
-    tabPanel("Benard et al. (2021)", value = "analyses"),
+    # tabPanel("Benard et al. (2021)", value = "analyses"),  # Commented out for simplified deploy; re-enable with Benard data load at top of app
     conditionalPanel(
       condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
       sidebarLayout(
@@ -616,7 +672,7 @@ ui <- fluidPage(
             }), selected = "All"),
           selectInput("karyotype", "Karyotype:", 
             choices = c("All", "Complex", "Normal", "Other", "Unknown"), selected = "All"),
-          sliderInput("min_freq", "Min. mutation frequency:", min = 1, max = 100, value = 50, step = 1),
+          sliderInput("min_gene_pct", "Min. gene frequency (% of samples):", min = 1, max = 100, value = 5, step = 1),
           conditionalPanel(
             condition = "input.main_nav === 'meta_aml4'",
             hr(),
@@ -648,17 +704,23 @@ server <- function(input, output, session) {
   selected_analyses_tab <- reactiveVal(NULL)
   # Preserve inner tab inside "All Gene Associations" (Single, Co-mutation, VAF, Drug Sensitivity)
   selected_meta4_allgene_tab <- reactiveVal(NULL)
+  # Preserve sub-tab inside Single Gene Associations (Clinical, Co-mutation, VAF, Drug Sensitivity)
+  selected_gene_summary_sub_tab <- reactiveVal("clinical")
 
-  # Format p/q for display: < 0.001, < 0.01, < 0.05, or numeric
+  # Precomputed Drug Sensitivity results (Mut vs WT, VAF vs AUC correlations, LOOCV) per subset to reduce memory on deploy
+  precomputed_drug <- NULL
+  tryCatch({
+    path <- file.path(getwd(), "drug_sensitivity_precomputed.rds")
+    if (file.exists(path)) precomputed_drug <- readRDS(path)
+  }, error = function(e) precomputed_drug <- NULL)
+
+  # Format p/q for display: exact numeric values (no < 0.01 style)
   format_pval_display <- function(p) {
     if (is.null(p) || length(p) == 0) return(p)
     out <- character(length(p))
     for (i in seq_along(p)) {
       if (is.na(p[i])) { out[i] <- NA_character_; next }
-      if (p[i] < 0.001) out[i] <- "< 0.001"
-      else if (p[i] < 0.01) out[i] <- "< 0.01"
-      else if (p[i] < 0.05) out[i] <- "< 0.05"
-      else out[i] <- as.character(round(p[i], 2))
+      out[i] <- format(round(p[i], 4), scientific = FALSE, drop0trailing = TRUE)
     }
     out
   }
@@ -693,10 +755,10 @@ server <- function(input, output, session) {
     if (identical(nav, "meta_aml4")) {
       # Meta AML4: three main tabs — Overview, All Gene Associations (sub-tabs), Single Gene Associations
       df <- filtered_data()
-      gene_choices <- if (is.null(df) || !"Gene_for_analysis" %in% colnames(df)) {
+      genes <- filtered_genes()
+      gene_choices <- if (length(genes) == 0) {
         c("Select gene..." = "")
       } else {
-        genes <- sort(unique(as.character(df$Gene_for_analysis)))
         c("Select gene..." = "", setNames(genes, genes))
       }
       current_tab <- selected_meta4_tab()
@@ -761,9 +823,8 @@ server <- function(input, output, session) {
                   fluidRow(
                     column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 450))),
                     column(6, wellPanel(
-                      h4("VAF and Survival (MaxStat)"),
-                      p(em("Optimal VAF threshold from maximally selected rank statistics (maxstat); log-rank. High vs Low VAF split among mutated patients.")),
-                      selectInput("vaf_surv_gene", "Gene:", choices = gene_choices),
+                      h4("VAF and Survival: Hazard Ratios (MaxStat)"),
+                      p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with ≥20 mutated samples with VAF and survival only.")),
                       plotOutput("vaf_survival_plot", height = 450)))
                   ),
                   fluidRow(
@@ -782,21 +843,20 @@ server <- function(input, output, session) {
               )
             ),
             tabPanel("Drug Sensitivity",
-              p("VAF and mutation correlations with inhibitor sensitivity from BeatAML2 data.",
+              p("Data for mutation and VAF correlations with inhibitor sensitivity from BeatAML2 data.",
                 a("biodev.github.io/BeatAML2", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
               fluidRow(
                 column(12, wellPanel(
-                  h4("Summary"),
-                  div(id = "drug_subset_wrap", selectInput("drug_subset", "AML Subset:", choices = c("All", "de_novo", "secondary"), selected = "de_novo")),
+                  div(id = "drug_subset_wrap", selectInput("drug_subset", "Select Beat AML cohort:", choices = c("All", "de_novo", "secondary"), selected = "de_novo")),
                   uiOutput("drug_summary_ui")
                 ))
               ),
               fluidRow(
                 column(12, wellPanel(
-                  h4("Mut vs WT AUC (≥10 mut samples)"),
+                  h4("Mut vs WT AUC (≥5 mut samples)"),
                   uiOutput("drug_mut_wt_summary_ui"),
-                  p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). * q < 0.1 (FDR). Only gene-inhibitor pairs with p < 0.05 shown.")),
-                  plotOutput("drug_mut_wt_heatmap", height = 500)
+                  p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
+                  div(style = "margin: 0; padding: 0; line-height: 0;", plotOutput("drug_mut_wt_heatmap", height = 400))
                 ))
               ),
               fluidRow(
@@ -813,8 +873,8 @@ server <- function(input, output, session) {
                   p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
                   uiOutput("drug_scatter_selects_ui"),
                   fluidRow(
-                    column(6, plotOutput("drug_scatter_boxplot", height = 320)),
-                    column(6, plotOutput("drug_scatter_plot", height = 320))
+                    column(6, plotOutput("drug_scatter_boxplot", width = "100%", height = 320)),
+                    column(6, plotOutput("drug_scatter_plot", width = "100%", height = 320))
                   )
                 )),
                 column(6, wellPanel(
@@ -823,7 +883,8 @@ server <- function(input, output, session) {
                   plotOutput("drug_loo_heatmap", height = 350)))
               ),
               fluidRow(
-                column(12, wellPanel(h4("Top Correlations"), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
+                column(6, wellPanel(h4("Mut vs WT Statistics"), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+                column(6, wellPanel(h4("VAF vs AUC Statistics"), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
               )
             )
           )
@@ -835,10 +896,10 @@ server <- function(input, output, session) {
     } else if (identical(nav, "analyses")) {
       # Benard et al.: Overview, Single mutation associations, Co-mutation, VAF, Drug (Data Table hidden for now)
       df <- filtered_data()
-      gene_choices_analyses <- if (is.null(df) || !"Gene_for_analysis" %in% colnames(df)) {
+      genes <- filtered_genes()
+      gene_choices_analyses <- if (length(genes) == 0) {
         c("Select..." = "")
       } else {
-        genes <- sort(unique(as.character(df$Gene_for_analysis)))
         c("Select..." = "", setNames(genes, genes))
       }
       current_analyses_tab <- selected_analyses_tab()
@@ -897,9 +958,8 @@ server <- function(input, output, session) {
               fluidRow(
                 column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 450))),
                 column(6, wellPanel(
-                  h4("VAF and Survival (MaxStat)"),
-                  p(em("Optimal VAF threshold from maximally selected rank statistics (maxstat); log-rank. High vs Low VAF split among mutated patients.")),
-                  selectInput("vaf_surv_gene", "Gene:", choices = gene_choices_analyses),
+                  h4("VAF and Survival: Hazard Ratios (MaxStat)"),
+                  p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with ≥20 mutated samples with VAF and survival only.")),
                   plotOutput("vaf_survival_plot", height = 450)))
               ),
               fluidRow(
@@ -918,21 +978,20 @@ server <- function(input, output, session) {
           )
         ),
         tabPanel("Drug Sensitivity",
-          p("VAF and mutation correlations with inhibitor sensitivity from BeatAML2 data.",
+          p("Data for mutation and VAF correlations with inhibitor sensitivity from BeatAML2 data.",
             a("biodev.github.io/BeatAML2", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           fluidRow(
             column(12, wellPanel(
-              h4("Summary"),
-              div(id = "drug_subset_wrap", selectInput("drug_subset", "AML Subset:", choices = c("All", "de_novo", "secondary"), selected = "de_novo")),
+              div(id = "drug_subset_wrap", selectInput("drug_subset", "Select Beat AML cohort:", choices = c("All", "de_novo", "secondary"), selected = "de_novo")),
               uiOutput("drug_summary_ui")
             ))
           ),
           fluidRow(
             column(12, wellPanel(
-              h4("Mut vs WT AUC (≥10 mut samples)"),
+              h4("Mut vs WT AUC (≥5 mut samples)"),
               uiOutput("drug_mut_wt_summary_ui"),
-              p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). * q < 0.1 (FDR). Only gene-inhibitor pairs with p < 0.05 shown.")),
-              plotOutput("drug_mut_wt_heatmap", height = 500)
+              p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
+              div(style = "margin: 0; padding: 0; line-height: 0;", plotOutput("drug_mut_wt_heatmap", height = 500))
             ))
           ),
           fluidRow(
@@ -949,8 +1008,8 @@ server <- function(input, output, session) {
               p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
               uiOutput("drug_scatter_selects_ui"),
               fluidRow(
-                column(6, plotOutput("drug_scatter_boxplot", height = 320)),
-                column(6, plotOutput("drug_scatter_plot", height = 320))
+                column(6, plotOutput("drug_scatter_boxplot", width = "100%", height = 320)),
+                column(6, plotOutput("drug_scatter_plot", width = "100%", height = 320))
               )
             )),
             column(6, wellPanel(
@@ -959,7 +1018,8 @@ server <- function(input, output, session) {
               plotOutput("drug_loo_heatmap", height = 350)))
           ),
           fluidRow(
-            column(12, wellPanel(h4("Top Correlations"), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
+            column(6, wellPanel(h4("Mut vs WT Statistics"), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+            column(6, wellPanel(h4("VAF vs AUC Statistics"), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
           )
         )
         # Data Table tab hidden for now; re-add tabPanel("Data Table", ...) here to restore
@@ -979,6 +1039,9 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE)
   observeEvent(input$meta4_all_gene_tabs, {
     if (!is.null(input$meta4_all_gene_tabs)) selected_meta4_allgene_tab(input$meta4_all_gene_tabs)
+  })
+  observeEvent(input$gene_summary_sub_tabs, {
+    if (!is.null(input$gene_summary_sub_tabs)) selected_gene_summary_sub_tab(input$gene_summary_sub_tabs)
   }, ignoreNULL = TRUE)
 
   # When user selects a gene from "Summarize all associations for a single gene", switch to Single Gene Associations tab (Meta AML4)
@@ -992,7 +1055,7 @@ server <- function(input, output, session) {
   output$meta4_fallback_banner <- renderUI({
     if (identical(input$main_nav, "meta_aml4") && !meta4_uses_dedicated_file) {
       div(class = "alert alert-warning", role = "alert", style = "margin-bottom: 1em;",
-        strong("Meta AML4 data file not found."), " Add ", code("AML_Meta_Cohort_v2.rds"), " or ", code("AML_Meta_Cohort.rds"), " (or ", code("AML_Meta_Cohort.RData"), ") to the app directory and redeploy. This tab is currently showing the Benard et al. (2021) dataset."
+        strong("Meta AML4 data file not found."), " Add ", code("AML_Meta_Cohort_v2.rds"), " or ", code("AML_Meta_Cohort.rds"), " (or ", code("AML_Meta_Cohort.RData"), ") to the app directory and redeploy."
       )
     }
   })
@@ -1006,13 +1069,70 @@ server <- function(input, output, session) {
     }
   }, ignoreNULL = TRUE, ignoreInit = FALSE)
   
-  # Invalidate cache when filters change
-  observeEvent(c(input$subset, input$cohort, input$karyotype, input$min_freq), {
+  # Invalidate cache when filters change (min_gene_pct does NOT affect sample filtering, so not included here)
+  observeEvent(c(input$subset, input$cohort, input$karyotype), {
     nav <- input$main_nav
     if (nav %in% c("analyses", "meta_aml4")) {
       cached_filtered_data[[nav]] <- NULL
       cached_data_params[[nav]] <- NULL
     }
+  }, ignoreInit = TRUE)
+
+  # Update slider max based on maximum gene frequency in filtered dataset
+  observeEvent(c(input$subset, input$cohort, input$karyotype, input$main_nav), {
+    if (!input$main_nav %in% c("analyses", "meta_aml4")) return()
+    req(current_data_src())
+    
+    # Get effective cohort
+    cohorts_in_data <- sort(unique(as.character(na.omit(current_data_src()$Cohort))))
+    co <- input$cohort
+    eff_cohort <- if (is.null(co) || co == "" || !co %in% c("All", cohorts_in_data)) "All" else co
+    
+    # Compute filtered data (without gene frequency filter) to determine max frequency
+    df <- prepare_data(current_data_src())
+    if (!"Gene_for_analysis" %in% colnames(df)) df$Gene_for_analysis <- as.character(df$Gene)
+    if (input$subset != "All") df <- df[as.character(df$Subset) == input$subset, , drop = FALSE]
+    if (eff_cohort != "All") df <- df[as.character(df$Cohort) == eff_cohort, , drop = FALSE]
+    if (!is.null(input$karyotype) && input$karyotype != "All" && "Karyotype" %in% colnames(df)) {
+      df <- df[as.character(df$Karyotype) == input$karyotype, , drop = FALSE]
+    }
+    
+    # Calculate maximum gene frequency percentage (integer 1 to max)
+    n_samples <- length(unique(df$Sample))
+    if (n_samples > 0) {
+      gene_counts <- table(as.character(df$Gene_for_analysis))
+      if (length(gene_counts) > 0) {
+        max_gene_pct <- max((gene_counts / n_samples) * 100)
+        # Max is ceiling of max frequency, at least 1, cap at 100
+        slider_max <- min(100, max(1L, ceiling(max_gene_pct)))
+      } else {
+        slider_max <- 100
+      }
+    } else {
+      slider_max <- 100
+    }
+    
+    # Update slider: min 1, step 1, max = slider_max (preserve current value if valid)
+    current_val <- if (is.null(input$min_gene_pct)) 5 else input$min_gene_pct
+    current_val <- max(1, min(current_val, slider_max))
+    updateSliderInput(session, "min_gene_pct", min = 1, max = slider_max, step = 1, value = current_val)
+  }, ignoreInit = FALSE)
+
+  # When switching main tab, clear the *other* tab's filtered-data cache so only one full subset is in memory (reduces OOM)
+  observeEvent(input$main_nav, {
+    nav <- input$main_nav
+    if (nav == "meta_aml4") {
+      cached_filtered_data$analyses <- NULL
+      cached_data_params$analyses <- NULL
+    } else if (nav == "analyses") {
+      cached_filtered_data$meta_aml4 <- NULL
+      cached_data_params$meta_aml4 <- NULL
+    }
+  }, ignoreInit = TRUE)
+
+  # When switching to Single Gene Drug Sensitivity sub-tab, run gc() to free memory before loading Drug content (reduces OOM)
+  observeEvent(input$gene_summary_sub_tabs, {
+    if (identical(input$gene_summary_sub_tabs, "drug")) gc()
   }, ignoreInit = TRUE)
 
   # Use effective cohort so that when switching tabs the first render shows correct data
@@ -1035,13 +1155,14 @@ server <- function(input, output, session) {
     eff_cohort <- if (is.null(co) || co == "" || !co %in% c("All", cohorts_in_data)) "All" else co
     
     # Check cache: if same tab and same filter params, return cached data
-    current_params <- list(subset = input$subset, cohort = eff_cohort, karyotype = input$karyotype, min_freq = input$min_freq)
+    # Note: gene frequency filter does NOT affect which samples are included, only which genes are shown
+    current_params <- list(subset = input$subset, cohort = eff_cohort, karyotype = input$karyotype)
     if (!is.null(cached_filtered_data[[nav]]) && 
         identical(cached_data_params[[nav]], current_params)) {
       return(cached_filtered_data[[nav]])
     }
     
-    # Compute filtered data
+    # Compute filtered data (only filter by subset/cohort/karyotype - keep ALL samples)
     df <- prepare_data(current_data_src())
     if (!"Gene_for_analysis" %in% colnames(df)) df$Gene_for_analysis <- as.character(df$Gene)
     if (input$subset != "All") df <- df[as.character(df$Subset) == input$subset, , drop = FALSE]
@@ -1049,9 +1170,7 @@ server <- function(input, output, session) {
     if (!is.null(input$karyotype) && input$karyotype != "All" && "Karyotype" %in% colnames(df)) {
       df <- df[as.character(df$Karyotype) == input$karyotype, , drop = FALSE]
     }
-    gene_counts <- table(as.character(df$Gene_for_analysis))
-    keep_genes <- names(gene_counts)[gene_counts >= input$min_freq]
-    df <- df[as.character(df$Gene_for_analysis) %in% keep_genes, , drop = FALSE]
+    # Do NOT filter genes here - gene frequency filter only affects which genes are shown in dropdowns/plots, not which samples are included
     df <- as.data.frame(df, stringsAsFactors = FALSE)
     
     # Cache the result
@@ -1074,16 +1193,33 @@ server <- function(input, output, session) {
     }
   })
 
-  observe({
+  # Get genes filtered by frequency (for display in dropdowns/plots only, not for sample filtering)
+  filtered_genes <- reactive({
     req(df <- filtered_data())
-    genes <- sort(unique(as.character(df$Gene_for_analysis)))
+    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    if (min_pct > 0) {
+      n_samples <- length(unique(df$Sample))
+      if (n_samples > 0) {
+        gene_counts <- table(as.character(df$Gene_for_analysis))
+        gene_pct <- (gene_counts / n_samples) * 100
+        keep_genes <- names(gene_pct)[gene_pct >= min_pct]
+        sort(unique(as.character(keep_genes)))
+      } else {
+        character(0)
+      }
+    } else {
+      sort(unique(as.character(df$Gene_for_analysis)))
+    }
+  })
+
+  observe({
+    req(genes <- filtered_genes())
     updateSelectInput(session, "surv_gene", choices = c("Select..." = "", genes))
     updateSelectInput(session, "vaf_gene1", choices = c("Select..." = "", genes))
     updateSelectInput(session, "vaf_gene2", choices = c("Select..." = "", genes))
     updateSelectInput(session, "comut_gene1", choices = c("Select..." = "", genes))
     updateSelectInput(session, "comut_gene2", choices = c("Select..." = "", genes))
     updateSelectInput(session, "comut_gene3", choices = c("Select..." = "", genes))
-    updateSelectInput(session, "vaf_surv_gene", choices = c("Select..." = "", genes))
     if (identical(input$main_nav, "meta_aml4")) {
       updateSelectInput(session, "gene_summary", choices = c("Select gene..." = "", genes))
     }
@@ -1096,7 +1232,7 @@ server <- function(input, output, session) {
     vals <- c(length(unique(df$Sample)), nrow(df), length(unique(df$Gene_for_analysis)), samples_surv)
     data.frame(
       Metric = c("Samples", "Mutations", "Genes", "With survival data"),
-      Value = round(vals, 2)
+      Value = as.integer(vals)
     )
   }, colnames = FALSE, width = "100%")
 
@@ -1128,6 +1264,7 @@ server <- function(input, output, session) {
   oncoprint_data <- reactive({
     req(input$main_nav %in% c("analyses", "meta_aml4"))
     req(df <- filtered_data())
+    input$min_gene_pct  # Explicitly depend on gene frequency filter to trigger updates
     final_data_matrix_3 <- df
     if (!is_meta4()) {
       for (i in seq_len(nrow(final_data_matrix_3))) {
@@ -1153,15 +1290,25 @@ server <- function(input, output, session) {
       final_data_matrix_3$variant_type[flt3_other_idx] <- "Other"
     }
     gene_tbl <- table(as.character(final_data_matrix_3$Gene))
-    keep_genes <- names(gene_tbl)[gene_tbl >= input$min_freq]
-    final_data_matrix_3 <- final_data_matrix_3[as.character(final_data_matrix_3$Gene) %in% keep_genes, , drop = FALSE]
     if (nrow(final_data_matrix_3) == 0) return(NULL)
-    # Cap at 30 genes for oncoprint regardless of min_freq
-    sorted <- names(sort(gene_tbl[keep_genes], decreasing = TRUE))
+    # Apply gene frequency filter only to determine which genes to show (all samples still included)
+    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    if (min_pct > 0) {
+      n_samples <- length(unique(final_data_matrix_3$Sample))
+      if (n_samples > 0) {
+        gene_pct <- (gene_tbl / n_samples) * 100
+        keep_genes <- names(gene_pct)[gene_pct >= min_pct]
+        gene_tbl <- gene_tbl[names(gene_tbl) %in% keep_genes]
+      }
+    }
+    # Cap at 30 genes for oncoprint (from genes that pass frequency filter)
+    sorted <- names(sort(gene_tbl, decreasing = TRUE))
     top_genes <- head(sorted, 30L)
+    # Filter final_data_matrix_3 to only show mutations for top genes (but all samples are still represented in the matrix)
     final_data_matrix_3 <- final_data_matrix_3[as.character(final_data_matrix_3$Gene) %in% top_genes, , drop = FALSE]
-    samples <- unique(as.character(final_data_matrix_3$Sample))
-    final_data_matrix_3 <- final_data_matrix_3[final_data_matrix_3$Sample %in% samples, , drop = FALSE]
+    # Get all samples from original filtered data (not just those with mutations in top genes)
+    all_samples <- unique(as.character(df$Sample))
+    samples <- all_samples
     if (nrow(final_data_matrix_3) == 0) return(NULL)
     c <- length(samples)
     r <- length(top_genes)
@@ -1360,20 +1507,88 @@ server <- function(input, output, session) {
 
   output$vaf_gene_plot <- renderPlot({
     req(df <- filtered_data())
+    input$min_gene_pct  # Re-run when min gene frequency filter changes
     df <- df[!is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     gene_tbl <- table(as.character(df$Gene_for_analysis))
-    top_genes <- names(sort(gene_tbl, decreasing = TRUE))[1:min(25, length(gene_tbl))]
-    df <- df[as.character(df$Gene_for_analysis) %in% top_genes, , drop = FALSE]
+    # Restrict to genes that pass Min. gene frequency (% of samples) filter
+    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    if (min_pct > 0) {
+      n_samples <- length(unique(df$Sample))
+      if (n_samples > 0) {
+        gene_pct <- (gene_tbl / n_samples) * 100
+        keep_genes <- names(gene_pct)[gene_pct >= min_pct]
+        gene_tbl <- gene_tbl[names(gene_tbl) %in% keep_genes]
+      }
+    }
+    if (length(gene_tbl) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes pass the Min. gene frequency filter") + theme_void())
+    plot_genes <- names(sort(gene_tbl, decreasing = TRUE))
+    df <- df[as.character(df$Gene_for_analysis) %in% plot_genes, , drop = FALSE]
+    # Gene order by median VAF (low to high = bottom to top) so both plots align
+    med <- aggregate(VAF ~ Gene_for_analysis, data = df, FUN = median)
+    gene_order <- as.character(med$Gene_for_analysis[order(med$VAF)])
+    df$Gene_for_analysis <- factor(as.character(df$Gene_for_analysis), levels = gene_order)
     n_cat <- if ("mutation_category" %in% colnames(df)) length(unique(df$mutation_category[!is.na(df$mutation_category) & df$mutation_category != ""])) else 0L
     fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
-    ggplot(df, aes(x = VAF, y = reorder(Gene_for_analysis, VAF, median), fill = .data[[fill_var]])) +
+    # Shared y scale so patchwork aligns gene rows; use scale_y_discrete(limits = gene_order, drop = FALSE)
+    scale_y_shared <- scale_y_discrete(limits = gene_order, drop = FALSE)
+    # Left: VAF by gene (boxplot); legend on top when combined with patchwork
+    p_vaf <- ggplot(df, aes(x = VAF, y = Gene_for_analysis, fill = .data[[fill_var]])) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
+      scale_y_shared +
       (if (fill_var == "mutation_category") scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
       labs(x = "Variant Allele Frequency (%)", y = NULL) +
       theme_minimal(base_size = 16) +
-      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.text = element_text(size = 13), legend.title = element_text(size = 14), legend.position = if (fill_var == "mutation_category") "right" else "none")
+      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.text = element_text(size = 13), legend.title = element_text(size = 14))
+    # Right: N mutations per gene – horizontal bars, same y scale; colored by mutation_category when used
+    if (fill_var == "mutation_category" && "mutation_category" %in% colnames(df)) {
+      cat_counts <- as.data.frame(table(Gene_for_analysis = df$Gene_for_analysis, mutation_category = df$mutation_category), stringsAsFactors = FALSE)
+      cat_counts$Gene_for_analysis <- factor(as.character(cat_counts$Gene_for_analysis), levels = gene_order)
+      cat_counts$mutation_category[is.na(cat_counts$mutation_category) | cat_counts$mutation_category == ""] <- NA_character_
+      p_count <- ggplot(cat_counts, aes(x = Freq, y = Gene_for_analysis, fill = mutation_category)) +
+        geom_vline(xintercept = 0, color = "black", linewidth = 0.5) +
+        geom_col(position = "stack", width = 0.7) +
+        scale_y_shared +
+        scale_x_continuous(breaks = function(x) { m <- max(x, na.rm = TRUE); if (m <= 0) 0 else round(c(0, m / 2, m)) }) +
+        scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
+        labs(x = "N mutations", y = NULL) +
+        theme_minimal(base_size = 16) +
+        theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title = element_text(size = 15), axis.text = element_text(size = 14), plot.margin = margin(l = 6, r = 4, unit = "pt"))
+    } else {
+      count_df <- data.frame(Gene_for_analysis = factor(gene_order, levels = gene_order), n = as.integer(gene_tbl[gene_order]))
+      count_df$n[is.na(count_df$n)] <- 0L
+      p_count <- ggplot(count_df, aes(x = n, y = Gene_for_analysis)) +
+        geom_vline(xintercept = 0, color = "black", linewidth = 0.5) +
+        scale_y_shared +
+        scale_x_continuous(breaks = function(x) { m <- max(x, na.rm = TRUE); if (m <= 0) 0 else round(c(0, m / 2, m)) }) +
+        geom_col(width = 0.7, fill = "gray50") +
+        labs(x = "N mutations", y = NULL) +
+        theme_minimal(base_size = 16) +
+        theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title = element_text(size = 15), axis.text = element_text(size = 14), plot.margin = margin(l = 6, r = 4, unit = "pt"))
+    }
+    if (has_patchwork) {
+      # Patchwork: align plots by shared y-axis, legend collected and placed on top
+      combined <- p_vaf + p_count +
+        patchwork::plot_layout(ncol = 2, widths = c(2, 0.6), guides = "collect") +
+        theme(legend.position = "top")
+      print(combined)
+    } else if (has_gridExtra) {
+      p_vaf_noleg <- p_vaf + theme(legend.position = "none")
+      leg_grob <- NULL
+      if (fill_var == "mutation_category") {
+        g <- ggplotGrob(p_vaf)
+        idx <- which(g$layout$name == "guide-box")
+        if (length(idx) > 0) leg_grob <- g$grobs[[idx[1]]]
+      }
+      if (!is.null(leg_grob)) {
+        gridExtra::grid.arrange(leg_grob, gridExtra::arrangeGrob(p_vaf_noleg, p_count, ncol = 2, widths = c(2, 0.6)), nrow = 2, heights = c(0.12, 1))
+      } else {
+        gridExtra::grid.arrange(p_vaf_noleg, p_count, ncol = 2, widths = c(2.2, 0.6))
+      }
+    } else {
+      print(p_vaf + theme(legend.position = "right"))
+    }
   })
 
   output$vaf_cohort_plot <- renderPlot({
@@ -1406,55 +1621,67 @@ server <- function(input, output, session) {
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.position = "none")
   })
 
-  vaf_survival_data <- reactive({
-    gene <- input$vaf_surv_gene
-    if (is.null(gene) || gene == "") return(NULL)
-    df <- filtered_data()
+  # Summary of HR (and 95% CI) per gene from MaxStat-derived High vs Low VAF Cox model
+  vaf_survival_hr_summary <- reactive({
+    req(df <- filtered_data())
+    input$min_gene_pct
     if (!"VAF" %in% colnames(df)) return(NULL)
-    df <- df[as.character(df$Gene_for_analysis) == gene & !is.na(df$VAF) & df$VAF > 0, c("Sample", "VAF"), drop = FALSE]
-    if (nrow(df) == 0) return(NULL)
-    vaf_agg <- aggregate(VAF ~ Sample, data = df, max)
     surv_df <- survival_data()
-    surv_df <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
-    merge_df <- merge(vaf_agg, surv_df, by = "Sample", all = FALSE)
-    if (nrow(merge_df) < 20) return(NULL)
-    merge_df
+    if (is.null(surv_df) || nrow(surv_df) == 0) return(NULL)
+    surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
+    genes <- filtered_genes()
+    if (length(genes) == 0) return(NULL)
+    if (!has_maxstat) return(NULL)
+    res_list <- list()
+    for (gene in genes) {
+      sub <- df[as.character(df$Gene_for_analysis) == gene & !is.na(df$VAF) & df$VAF > 0, c("Sample", "VAF"), drop = FALSE]
+      if (nrow(sub) == 0) next
+      vaf_agg <- aggregate(VAF ~ Sample, data = sub, FUN = max)
+      merge_df <- merge(vaf_agg, surv_uniq, by = "Sample", all = FALSE)
+      if (nrow(merge_df) < 20) next
+      mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ VAF, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
+      if (is.null(mst)) next
+      cutpoint <- mst$estimate
+      merge_df$Group <- factor(ifelse(merge_df$VAF > cutpoint, "High", "Low"), levels = c("Low", "High"))
+      if (length(unique(merge_df$Group)) < 2) next
+      cx <- tryCatch(survival::coxph(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = merge_df), error = function(e) NULL)
+      if (is.null(cx)) next
+      ci <- tryCatch(exp(confint(cx)), error = function(e) NULL)
+      if (is.null(ci)) next
+      cx_sum <- summary(cx)
+      hr <- exp(coef(cx))["GroupHigh"]
+      ci_lo <- ci["GroupHigh", 1]
+      ci_hi <- ci["GroupHigh", 2]
+      pval <- cx_sum$coefficients["GroupHigh", "Pr(>|z|)"]
+      res_list[[length(res_list) + 1L]] <- data.frame(Gene = gene, HR = as.numeric(hr), CI_lower = as.numeric(ci_lo), CI_upper = as.numeric(ci_hi), p_value = as.numeric(pval), threshold = round(cutpoint, 1), n = nrow(merge_df), stringsAsFactors = FALSE)
+    }
+    if (length(res_list) == 0) return(NULL)
+    out <- do.call(rbind, res_list)
+    out <- out[order(out$HR), , drop = FALSE]
+    out
   })
 
   output$vaf_survival_plot <- renderPlot({
-    gene <- input$vaf_surv_gene
-    if (is.null(gene) || gene == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
-    vaf_surv_df <- vaf_survival_data()
-    if (is.null(vaf_surv_df) || nrow(vaf_surv_df) < 20) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Need at least 20 mutated samples with VAF and survival data. Install the maxstat package for optimal threshold.") + theme_void())
+    hr_summary <- vaf_survival_hr_summary()
+    if (is.null(hr_summary) || nrow(hr_summary) == 0) {
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes with ≥20 mutated samples (VAF + survival). Install maxstat for MaxStat threshold.") + theme_void())
     }
     if (!has_maxstat) {
       return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install the maxstat package for optimal VAF threshold (maximally selected rank statistics).") + theme_void())
     }
-    mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ VAF, data = vaf_surv_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
-    if (is.null(mst)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "MaxStat failed for this gene.") + theme_void())
-    cutpoint <- mst$estimate
-    vaf_surv_df$Group <- factor(ifelse(vaf_surv_df$VAF > cutpoint, "High VAF", "Low VAF"), levels = c("High VAF", "Low VAF"))
-    fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = vaf_surv_df)
-    sd <- survdiff(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = vaf_surv_df)
-    pval <- 1 - pchisq(sd$chisq, length(sd$n) - 1)
-    pval_txt <- if (pval < 0.001) "p < 0.001" else paste0("p = ", format.pval(pval, digits = 2))
-    if (has_survminer) {
-      legend_labs <- gsub("^Group=", "", names(fit$strata))
-      # Unnamed palette: first = High VAF (red), second = Low VAF (grey); Group factor ensures this order
-      p <- survminer::ggsurvplot(fit, data = vaf_surv_df, risk.table = TRUE, pval = pval_txt,
-        title = paste0(gene, ": High vs Low VAF (threshold ", round(cutpoint, 1), "%)"), xlab = "Years",
-        palette = c("#8B0000", "#4D4D4D"), legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.1))
-      print(p)
-    } else {
-      legend_labs <- gsub("^Group=", "", names(fit$strata))
-      sf_dat <- data.frame(time = fit$time, surv = fit$surv, strata = rep(legend_labs, fit$strata))
-      ggplot(sf_dat, aes(x = time, y = surv, color = strata)) +
-        geom_step(linewidth = 1) +
-        scale_color_manual(values = c("High VAF" = "#8B0000", "Low VAF" = "#4D4D4D")) +
-        labs(title = paste0(gene, ": High vs Low VAF (", round(cutpoint, 1), "%)"), subtitle = pval_txt, x = "Years", y = "Survival probability") +
-        theme_minimal() + theme(legend.position = "right")
-    }
+    # Forest plot: gene on y, HR on x with 95% CI; reference line at 1; ordered by HR (lowest at top), colored like single-gene Hazard Ratios (purple/green for significant)
+    hr_summary$Gene <- factor(hr_summary$Gene, levels = hr_summary$Gene)
+    hr_summary$ColorGroup <- ifelse(hr_summary$p_value >= 0.05, "Not significant",
+      ifelse(hr_summary$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
+    ggplot(hr_summary, aes(x = HR, y = Gene, xmin = CI_lower, xmax = CI_upper, color = ColorGroup)) +
+      geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
+      geom_errorbarh(height = 0.2, linewidth = 0.6) +
+      geom_point(size = 3) +
+      scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
+      scale_x_continuous(trans = "log10", name = "Hazard ratio (High vs Low VAF, 95% CI)") +
+      labs(y = NULL, title = "VAF–Survival: HR per gene (MaxStat threshold)") +
+      theme_minimal(base_size = 14) +
+      theme(axis.text.y = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 14, face = "bold"))
   })
 
   survival_data <- reactive({
@@ -1462,6 +1689,18 @@ server <- function(input, output, session) {
     df <- df[!is.na(df$Time_to_OS) & !is.na(df$Censor), , drop = FALSE]
     df$Time_to_OS <- as.numeric(df$Time_to_OS) / 365
     df
+  })
+
+  # Minimal survival table for Single Gene KM only (reduces memory: one row per sample, 4 columns)
+  gene_summary_survival_km_data <- reactive({
+    g <- input$gene_summary
+    if (is.null(g) || g == "") return(NULL)
+    surv_df <- survival_data()
+    if (is.null(surv_df) || nrow(surv_df) == 0) return(NULL)
+    mut_samples <- unique(surv_df$Sample[as.character(surv_df$Gene_for_analysis) == g])
+    out <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor"), drop = FALSE]
+    out$Mutation <- ifelse(out$Sample %in% mut_samples, paste0(g, " mut"), "WT")
+    out
   })
 
   output$survival_plot <- renderPlot({
@@ -1480,7 +1719,7 @@ server <- function(input, output, session) {
       legend_labs <- gsub("^Mutation=", "", names(fit$strata))
       p <- survminer::ggsurvplot(fit, data = surv_uniq, risk.table = TRUE, pval = TRUE,
         title = paste("Survival by", gene, "mutation status"), xlab = "Years",
-        palette = surv_pal, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.1))
+        palette = surv_pal, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install the survminer package for Kaplan-Meier plots with number at risk.", size = 4) + theme_void()
@@ -1490,8 +1729,20 @@ server <- function(input, output, session) {
   forest_data <- reactive({
     surv_df <- survival_data()
     surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
+    # Apply gene frequency filter to determine which genes to show in forest plot (all samples still used for analysis)
     gene_tbl <- table(as.character(surv_df$Gene_for_analysis))
-    genes <- names(gene_tbl)[gene_tbl >= input$min_freq]
+    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    if (min_pct > 0) {
+      n_samples <- length(unique(surv_df$Sample))
+      if (n_samples > 0) {
+        gene_pct <- (gene_tbl / n_samples) * 100
+        genes <- names(gene_pct)[gene_pct >= min_pct]
+      } else {
+        genes <- character(0)
+      }
+    } else {
+      genes <- names(gene_tbl)
+    }
     res <- list()
     for (g in genes) {
       mut_pts <- unique(surv_df$Sample[surv_df$Gene_for_analysis == g])
@@ -1581,7 +1832,7 @@ server <- function(input, output, session) {
       legend_labs <- gsub("^Group=", "", names(fit$strata))
       p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = pval_txt,
         title = "Survival by Co-mutation Status", xlab = "Years",
-        palette = pal_vec, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.1))
+        palette = pal_vec, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install the survminer package for Kaplan-Meier plots with number at risk.", size = 4) + theme_void()
@@ -1605,7 +1856,7 @@ server <- function(input, output, session) {
 
   output$survival_table <- renderDT({
     df <- forest_data()
-    if (nrow(df) == 0) return(NULL)
+    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), HR_CI = character(), p = character(), p_adj = character()), options = list(pageLength = 15), rownames = FALSE))
     df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
     df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
     df$p <- format_pval_display(df$p)
@@ -1615,6 +1866,7 @@ server <- function(input, output, session) {
   output$clinical_plot <- renderPlot({
     var <- input$clin_var
     if (is.null(var) || var == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a variable"))
+    input$min_gene_pct  # Explicitly depend on gene frequency filter to trigger updates
     df <- filtered_data()
     if (is.null(df) || !var %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Variable not in data"))
     df_one <- df[!duplicated(df$Sample), c("Sample", "Gene_for_analysis", var), drop = FALSE]
@@ -1629,7 +1881,17 @@ server <- function(input, output, session) {
       df_one <- df_one[df_one[[var]] <= 300, , drop = FALSE]
     }
     if (nrow(df_one) < 5) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data"))
+    # Apply gene frequency filter to determine which genes to show
     gene_tbl <- table(df_one$Gene_for_analysis)
+    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    if (min_pct > 0) {
+      n_samples <- length(unique(df_one$Sample))
+      if (n_samples > 0) {
+        gene_pct <- (gene_tbl / n_samples) * 100
+        keep_genes <- names(gene_pct)[gene_pct >= min_pct]
+        gene_tbl <- gene_tbl[names(gene_tbl) %in% keep_genes]
+      }
+    }
     top_genes <- names(sort(gene_tbl, decreasing = TRUE))[1:min(20, length(gene_tbl))]
     df_one <- df_one[df_one$Gene_for_analysis %in% top_genes, , drop = FALSE]
     df_one$Gene <- factor(df_one$Gene_for_analysis, levels = top_genes)
@@ -1645,12 +1907,15 @@ server <- function(input, output, session) {
       theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title = element_text(size = 13))
   })
 
+  # Co-occurrence computed on all genes (subset/cohort/karyotype only). Min. gene frequency filter is applied only for display.
   cooccurrence_data <- reactive({
     df <- filtered_data()[, c("Sample", "Gene_for_analysis"), drop = FALSE]
     df <- df[!duplicated(df), , drop = FALSE]
     df$Gene <- df$Gene_for_analysis
     df <- df[, c("Sample", "Gene"), drop = FALSE]
-    genes <- names(which(table(as.character(df$Gene)) >= 15))
+    # Use all genes with >= 15 samples for stable Fisher test (no % filter here)
+    gene_tbl <- table(as.character(df$Gene))
+    genes <- names(which(gene_tbl >= 15))
     if (length(genes) < 2) return(list(matrix = NULL, pairs = NULL))
     df <- df[as.character(df$Gene) %in% genes, , drop = FALSE]
     wide <- as.data.frame.matrix(xtabs(~ Sample + Gene, data = df))
@@ -1685,14 +1950,24 @@ server <- function(input, output, session) {
   })
 
   output$cooccurrence_plot <- renderPlot({
+    input$min_gene_pct  # Re-render when gene frequency filter changes (display only)
     cooc <- cooccurrence_data()
-    if (is.null(cooc$matrix) || nrow(cooc$matrix) < 3) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data"))
-    mat <- cooc$matrix
+    if (is.null(cooc$matrix) || nrow(cooc$matrix) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data"))
+    # Filter to genes passing min. gene frequency for display only (underlying ORs unchanged)
+    keep_genes <- filtered_genes()
+    if (length(keep_genes) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes pass frequency filter"))
+    keep_genes <- intersect(keep_genes, rownames(cooc$matrix))
+    if (length(keep_genes) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data"))
+    mat <- cooc$matrix[keep_genes, keep_genes, drop = FALSE]
     mat_log <- log2(mat + 0.01)
     mat_log[mat_log > 2] <- 2
     mat_log[mat_log < -2] <- -2
     ord <- hclust(dist(mat_log))$order
     mat_ord <- mat_log[ord, ord]
+    n_genes <- nrow(mat_ord)
+    # Dynamically size axis text based on number of genes: smaller for more genes, larger for fewer
+    # Formula: start at 14 for 10 genes, scale down to ~8 for 50+ genes
+    axis_text_size <- max(8, 14 - (n_genes - 10) * 0.15)
     df_plot <- data.frame(Gene1 = rep(rownames(mat_ord), ncol(mat_ord)),
       Gene2 = rep(colnames(mat_ord), each = nrow(mat_ord)),
       log2OR = as.vector(mat_ord))
@@ -1701,22 +1976,30 @@ server <- function(input, output, session) {
     ggplot(df_plot, aes(x = Gene1, y = Gene2, fill = log2OR)) +
       geom_tile() +
       scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) +
-      labs(x = NULL, y = NULL, fill = "log2(OR)", title = "Co-mutation\nOdds Ratio") +
+      coord_fixed() +
+      labs(x = NULL, y = NULL, fill = "log2(OR)", title = "Co-mutation Odds Ratio") +
       theme_minimal(base_size = 16) +
-      theme(axis.text = element_text(size = 14), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.title = element_text(size = 14), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5, size = 16))
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = axis_text_size), axis.text.y = element_text(size = axis_text_size), legend.title = element_text(size = 14), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5, size = 16))
   })
 
   output$cooccurrence_table <- renderDT({
+    input$min_gene_pct  # Re-render when gene frequency filter changes (display only)
     cooc <- cooccurrence_data()
-    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(NULL)
-    df <- cooc$pairs
+    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10), rownames = FALSE))
+    keep_genes <- filtered_genes()
+    # Filter pairs to those where both genes pass min. gene frequency (for display only)
+    if (length(keep_genes) > 0) {
+      df <- cooc$pairs[cooc$pairs$gene1 %in% keep_genes & cooc$pairs$gene2 %in% keep_genes, , drop = FALSE]
+    } else {
+      df <- cooc$pairs
+    }
+    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10), rownames = FALSE))
     df$pair <- paste(df$gene1, "+", df$gene2)
     df$odds_ratio <- round(df$odds_ratio, 2)
     df$p <- format_pval_display(df$p)
     df$q <- format_pval_display(df$q)
     df <- df[order(-df$n_cooccur), , drop = FALSE]
-    df <- head(df, 30)
-    datatable(df[, c("pair", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 10), rownames = FALSE)
+    datatable(df[, c("pair", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 25), rownames = FALSE)
   })
 
   # Figure 2: Co-occurrence & Prognosis (de novo)
@@ -1939,7 +2222,7 @@ server <- function(input, output, session) {
           scale_vals <- setNames(scale_vals, sn)
           legend_labs <- gsub("^grp=", "", sn)
           sp <- survminer::ggsurvplot(fit, data = surv_sub, risk.table = TRUE, pval = pv_txt,
-            title = as.character(sig$genotype[i]), xlab = "Years", palette = scale_vals, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.1))
+            title = as.character(sig$genotype[i]), xlab = "Years", palette = scale_vals, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05))
           splots[[length(splots) + 1]] <- sp
         }
       }
@@ -1988,6 +2271,7 @@ server <- function(input, output, session) {
 
   output$clinical_plot <- renderPlot({
     var <- input$clin_var
+    input$min_gene_pct  # Explicitly depend on gene frequency filter to trigger updates
     req(df <- filtered_data())
     cols <- c("Sample", "Gene_for_analysis", var)
     df <- df[, cols[cols %in% colnames(df)], drop = FALSE]
@@ -2004,6 +2288,16 @@ server <- function(input, output, session) {
     if (nrow(sample_vals) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data in range"))
     df <- df[df$Sample %in% sample_vals$Sample, , drop = FALSE]
     gene_tbl <- table(as.character(df$Gene_for_analysis))
+    # Apply gene frequency filter to determine which genes to show
+    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    if (min_pct > 0) {
+      n_samples <- length(unique(df$Sample))
+      if (n_samples > 0) {
+        gene_pct <- (gene_tbl / n_samples) * 100
+        keep_genes <- names(gene_pct)[gene_pct >= min_pct]
+        gene_tbl <- gene_tbl[names(gene_tbl) %in% keep_genes]
+      }
+    }
     top_genes <- names(sort(gene_tbl, decreasing = TRUE))
     plot_list <- lapply(top_genes, function(g) {
       mut_samples <- unique(df$Sample[df$Gene_for_analysis == g])
@@ -2098,20 +2392,38 @@ server <- function(input, output, session) {
   drug_correlations <- reactive({
     input$main_nav
     input$drug_subset
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+      pc <- precomputed_drug$meta_aml4[[subset]]$correlations
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
+    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      pc <- precomputed_drug$analyses[[subset]]$correlations
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_correlations")) return(NULL)
-    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     compute_drug_vaf_correlations(b, subset = subset)
   })
 
   drug_loo <- reactive({
     input$main_nav
     input$drug_subset
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+      pc <- precomputed_drug$meta_aml4[[subset]]$loo
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
+    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      pc <- precomputed_drug$analyses[[subset]]$loo
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_loo")) return(NULL)
-    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     compute_drug_vaf_loo(b, subset = subset)
   })
 
@@ -2185,24 +2497,35 @@ server <- function(input, output, session) {
     list(auc_sub = auc_sub, merged = merged, y_lim = y_lim, tt = tt, wilcox = wilcox, median_mut = median_mut, median_wt = median_wt, mean_mut = mean(mut_auc, na.rm = TRUE), mean_wt = mean(wt_auc, na.rm = TRUE), n_mut = length(mut_auc), n_wt = length(wt_auc))
   })
 
-  # Mut vs WT t-test for all gene-inhibitor pairs (n_mut >= 10) for Drug Sensitivity tab heatmap
+  # Mut vs WT t-test for all gene-inhibitor pairs (n_mut >= 5 with AUC data) for Drug Sensitivity tab heatmap
   drug_mut_wt_all <- reactive({
     input$drug_subset
     input$main_nav
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+      pc <- precomputed_drug$meta_aml4[[subset]]$mut_wt
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
+    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      pc <- precomputed_drug$analyses[[subset]]$mut_wt
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok || !"auc" %in% names(b) || !"mutations" %in% names(b)) return(NULL)
-    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    if (exists("compute_mut_wt_all")) return(compute_mut_wt_all(b, subset))
+    # Fallback inline if helper not loaded: require >= 5 mutated samples with inhibitor AUC data per gene-inhibitor
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
     mut_wide <- b$mutations[b$mutations$Sample %in% allowed, , drop = FALSE]
     if (nrow(auc_wide) == 0 || nrow(mut_wide) == 0) return(NULL)
-    genes <- names(which(table(mut_wide$Gene) >= 10))
+    genes <- names(which(table(mut_wide$Gene) >= 5))
     inhibitors <- unique(auc_wide$inhibitor)
     if (length(genes) == 0 || length(inhibitors) == 0) return(NULL)
     res_list <- list()
     for (g in genes) {
       mut_samples <- unique(mut_wide$Sample[mut_wide$Gene == g])
-      if (length(mut_samples) < 10) next
+      if (length(mut_samples) < 5) next
       for (inh in inhibitors) {
         sub <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
         sub$mut <- sub$Sample %in% mut_samples
@@ -2210,7 +2533,7 @@ server <- function(input, output, session) {
         wt_auc <- sub$auc[!sub$mut]
         n_mut <- length(mut_auc)
         n_wt <- length(wt_auc)
-        if (n_mut < 10) next
+        if (n_mut < 5) next
         delta <- mean(mut_auc, na.rm = TRUE) - mean(wt_auc, na.rm = TRUE)
         tt <- tryCatch(t.test(mut_auc, wt_auc), error = function(e) NULL)
         pval <- if (!is.null(tt)) tt$p.value else NA_real_
@@ -2223,26 +2546,81 @@ server <- function(input, output, session) {
     out
   })
 
-  # Drug correlations and LOOCV for gene summary tab (uses main subset filter)
+  # Drug correlations and LOOCV for gene summary tab (uses main subset filter); use precomputed when subset is All/de_novo/secondary
   gene_summary_drug_correlations <- reactive({
+    input$subset
+    input$main_nav
+    subset <- input$subset
+    if (is.null(subset) || subset == "All") subset <- "de_novo"
+    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
+    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
+      if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+        pc <- precomputed_drug$meta_aml4[[subset]]$correlations
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+      if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+        pc <- precomputed_drug$analyses[[subset]]$correlations
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_correlations")) return(NULL)
-    subset <- input$subset
-    if (is.null(subset) || subset == "All") subset <- "de_novo"
-    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
-    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
     compute_drug_vaf_correlations(b, subset = subset)
   })
 
-  gene_summary_drug_loo <- reactive({
-    b <- beataml_for_drug()
-    if (is.null(b) || !b$ok) return(NULL)
-    if (!exists("compute_drug_vaf_loo")) return(NULL)
+  # Single Gene Drug: only the correlation rows for the selected gene (avoids caching full table for this tab)
+  gene_summary_drug_correlations_gene <- reactive({
+    g <- input$gene_summary
+    if (is.null(g) || g == "") return(NULL)
     subset <- input$subset
     if (is.null(subset) || subset == "All") subset <- "de_novo"
     subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
     subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    nav <- input$main_nav
+    base_genes <- gene_to_beataml_bases(g)
+    full <- NULL
+    if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
+      if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+        full <- precomputed_drug$meta_aml4[[subset]]$correlations
+      } else if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+        full <- precomputed_drug$analyses[[subset]]$correlations
+      }
+    }
+    if (is.null(full) || nrow(full) == 0) {
+      b <- beataml_for_drug()
+      if (is.null(b) || !b$ok || !exists("compute_drug_vaf_correlations")) return(NULL)
+      full <- compute_drug_vaf_correlations(b, subset = subset)
+    }
+    if (is.null(full) || nrow(full) == 0) return(NULL)
+    sub <- full[full$Gene %in% base_genes, , drop = FALSE]
+    gc()
+    sub
+  })
+
+  gene_summary_drug_loo <- reactive({
+    input$subset
+    input$main_nav
+    subset <- input$subset
+    if (is.null(subset) || subset == "All") subset <- "de_novo"
+    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
+    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
+      if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+        pc <- precomputed_drug$meta_aml4[[subset]]$loo
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+      if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+        pc <- precomputed_drug$analyses[[subset]]$loo
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+    }
+    b <- beataml_for_drug()
+    if (is.null(b) || !b$ok) return(NULL)
+    if (!exists("compute_drug_vaf_loo")) return(NULL)
     compute_drug_vaf_loo(b, subset = subset)
   })
 
@@ -2250,7 +2628,7 @@ server <- function(input, output, session) {
     b <- beataml_for_drug()
     if (is.null(b)) return(p("BeatAML2 data not loaded. Run setup_beataml2.R to download."))
     if (!b$ok) return(p(style = "color:red", b$msg))
-    p(em("Select AML subset. All panels below use this subset."))
+    NULL
   })
 
   output$drug_vaf_auc_summary_ui <- renderUI({
@@ -2287,7 +2665,7 @@ server <- function(input, output, session) {
     plot_df$Gene <- factor(plot_df$Gene, levels = rev(gene_meds$Gene[order(gene_meds$delta_AUC)]))
     inh_meds <- aggregate(delta_AUC ~ Inhibitor, data = plot_df, FUN = median)
     plot_df$Inhibitor <- factor(plot_df$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$delta_AUC)])
-    ggplot(plot_df, aes(x = Inhibitor, y = Gene, fill = delta_AUC, size = VAF_range, label = star)) +
+    p <- ggplot(plot_df, aes(x = Inhibitor, y = Gene, fill = delta_AUC, size = VAF_range, label = star)) +
       geom_point(shape = 21, color = "black", stroke = 0.5) +
       geom_text(size = 5, color = "#525252", hjust = -0.2, vjust = 0.5, show.legend = FALSE) +
       scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0,
@@ -2299,6 +2677,8 @@ server <- function(input, output, session) {
         axis.title = element_text(size = 15), legend.text = element_text(size = 13), legend.title = element_text(size = 14),
         panel.grid.major = element_line(size = 0.5, linetype = "solid", color = "#f0f0f0"),
         legend.position = "right")
+    gc()
+    p
   })
 
   output$drug_mut_wt_summary_ui <- renderUI({
@@ -2320,51 +2700,121 @@ server <- function(input, output, session) {
     )
   })
 
+  output$drug_mut_wt_summary_table <- renderDT({
+    input$drug_subset
+    b <- beataml_for_drug()
+    if (is.null(b) || !b$ok) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
+    mut_wt <- drug_mut_wt_all()
+    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    # Filter to q < 0.1 (same as heatmap)
+    if ("q_value" %in% colnames(mut_wt)) {
+      mut_wt <- mut_wt[!is.na(mut_wt$q_value) & mut_wt$q_value < 0.1, , drop = FALSE]
+    } else {
+      mut_wt <- mut_wt[!is.na(mut_wt$p_value) & mut_wt$p_value < 0.05, , drop = FALSE]
+    }
+    if (nrow(mut_wt) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    # Compute mean AUC for mut and WT groups
+    auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
+    mut_wide <- b$mutations[b$mutations$Sample %in% allowed, , drop = FALSE]
+    mean_mut_auc <- numeric(nrow(mut_wt))
+    mean_wt_auc <- numeric(nrow(mut_wt))
+    for (i in seq_len(nrow(mut_wt))) {
+      g <- mut_wt$Gene[i]
+      inh <- mut_wt$Inhibitor[i]
+      mut_samples <- unique(mut_wide$Sample[mut_wide$Gene == g])
+      sub_auc <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
+      mut_auc_vals <- sub_auc$auc[sub_auc$Sample %in% mut_samples]
+      wt_auc_vals <- sub_auc$auc[!sub_auc$Sample %in% mut_samples]
+      mean_mut_auc[i] <- mean(mut_auc_vals, na.rm = TRUE)
+      mean_wt_auc[i] <- mean(wt_auc_vals, na.rm = TRUE)
+    }
+    # Determine resistance trend: Resistant if delta > 0 (mut higher AUC), Sensitive if delta < 0 (mut lower AUC)
+    resistance_trend <- ifelse(mut_wt$delta_AUC_mut_wt > 0, "Resistant", ifelse(mut_wt$delta_AUC_mut_wt < 0, "Sensitive", "Neutral"))
+    df <- data.frame(
+      Inhibitor = mut_wt$Inhibitor,
+      Gene = mut_wt$Gene,
+      `n mut` = as.integer(mut_wt$n_mut),
+      `n WT` = as.integer(mut_wt$n_wt),
+      `Mean Mut AUC` = round(mean_mut_auc, 2),
+      `Mean WT AUC` = round(mean_wt_auc, 2),
+      `Delta AUC` = round(mut_wt$delta_AUC_mut_wt, 3),
+      `p value` = format_pval_display(mut_wt$p_value),
+      `q value` = if ("q_value" %in% colnames(mut_wt)) format_pval_display(mut_wt$q_value) else "",
+      `Resistance Trend` = resistance_trend,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    if (ncol(df) == 10 && "q value" %in% names(df) && all(df$`q value` == "")) df$`q value` <- NULL
+    datatable(df, filter = "top", options = list(pageLength = 15, scrollX = TRUE), rownames = FALSE)
+  })
+
   output$drug_mut_wt_heatmap <- renderPlot({
     mut_wt <- drug_mut_wt_all()
-    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Mut vs WT data (need ≥10 mut samples per gene-inhibitor)") + theme_void())
-    mut_wt <- mut_wt[!is.na(mut_wt$p_value) & mut_wt$p_value < 0.05, , drop = FALSE]
-    if (nrow(mut_wt) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No gene-inhibitor pairs with p < 0.05") + theme_void())
-    mut_wt$star <- ifelse(!is.na(mut_wt$q_value) & mut_wt$q_value < 0.1, "*", "")
+    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Mut vs WT data (need ≥5 mut samples with AUC per gene-inhibitor)") + theme_void())
+    # Only show q < 0.1 (FDR) results
+    if ("q_value" %in% colnames(mut_wt)) {
+      mut_wt <- mut_wt[!is.na(mut_wt$q_value) & mut_wt$q_value < 0.1, , drop = FALSE]
+    } else {
+      mut_wt <- mut_wt[!is.na(mut_wt$p_value) & mut_wt$p_value < 0.05, , drop = FALSE]
+    }
+    if (nrow(mut_wt) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No gene-inhibitor pairs with q < 0.1 (FDR)") + theme_void())
     gene_meds <- aggregate(delta_AUC_mut_wt ~ Gene, data = mut_wt, FUN = median, na.rm = TRUE)
     mut_wt$Gene <- factor(mut_wt$Gene, levels = rev(gene_meds$Gene[order(gene_meds$delta_AUC_mut_wt)]))
     inh_meds <- aggregate(delta_AUC_mut_wt ~ Inhibitor, data = mut_wt, FUN = median, na.rm = TRUE)
     mut_wt$Inhibitor <- factor(mut_wt$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$delta_AUC_mut_wt)])
-    ggplot(mut_wt, aes(x = Inhibitor, y = Gene, fill = delta_AUC_mut_wt, label = star)) +
+    n_genes <- length(unique(mut_wt$Gene))
+    n_inhibitors <- length(unique(mut_wt$Inhibitor))
+    aspect_ratio <- n_genes / n_inhibitors
+    rng <- range(mut_wt$delta_AUC_mut_wt, na.rm = TRUE)
+    leg_breaks <- c(rng[1], 0, rng[2])
+    leg_labels <- list("Sensitive", expression(Delta~AUC), "Resistant")
+    p <- ggplot(mut_wt, aes(x = Inhibitor, y = Gene, fill = delta_AUC_mut_wt)) +
       geom_tile(color = "white", linewidth = 0.3) +
-      geom_text(size = 4, color = "black", fontface = "bold") +
-      scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0, name = expression(Delta~"AUC (mut-WT)")) +
-      labs(x = "Inhibitor", y = NULL, subtitle = "Delta AUC = mean AUC (mut) - mean AUC (WT). * q < 0.1 (FDR).") +
-      theme_minimal(base_size = 14) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.text = element_text(size = 11),
-        legend.title = element_text(size = 12), plot.subtitle = element_text(size = 10, color = "gray40"))
+      scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0,
+        name = "Mutated\nsamples\nare more:", breaks = leg_breaks, labels = leg_labels) +
+      labs(x = "Inhibitor", y = NULL) +
+      theme_minimal(base_size = 18) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 12),
+        axis.text.y = element_text(size = 14),
+        legend.title = element_text(size = 14), legend.text = element_text(size = 12),
+        aspect.ratio = aspect_ratio, plot.margin = margin(0, 0, 0, 0))
+    gc()
+    p
   })
 
   output$drug_scatter_boxplot <- renderPlot({
     d <- drug_scatter_shared()
-    if (is.null(d)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select inhibitor and gene") + theme_void())
+    empty_plot <- ggplot() +
+      annotate("text", x = 0.5, y = 0.5, label = "Select Gene and Inhibitor", size = 5) +
+      theme_void() +
+      theme(panel.background = element_rect(fill = "white"), plot.background = element_rect(fill = "white"), aspect.ratio = 1)
+    if (is.null(d)) return(empty_plot)
     auc_sub <- d$auc_sub
     gene <- input$drug_gene
     drug <- input$drug_inhibitor
     mut_col <- if (d$median_mut > d$median_wt) "#2166ac" else "#b2182b"
-    wilcox_label <- if (!is.null(d$wilcox)) { pv <- d$wilcox$p.value; if (pv < 0.05) "*" else "ns" } else ""
-    ptxt <- if (!is.null(d$tt)) { pv <- d$tt$p.value; if (pv < 0.001) "p < 0.001" else paste0("p = ", format.pval(pv, digits = 2)) } else ""
-    stats_label <- paste0("WT: n = ", d$n_wt, ", median = ", round(d$median_wt, 1),
-      "  |  Mut: n = ", d$n_mut, ", median = ", round(d$median_mut, 1),
-      if (nchar(ptxt) > 0) paste0("  |  ", ptxt) else "",
-      if (nchar(wilcox_label) > 0) paste0("  |  Wilcoxon: ", wilcox_label) else "")
-    ggplot(auc_sub, aes(x = Status, y = auc, fill = Status)) +
+    wilcox_ptxt <- if (!is.null(d$wilcox)) { pv <- d$wilcox$p.value; if (pv < 0.001) "Wilcoxon p < 0.001" else paste0("Wilcoxon p = ", format.pval(pv, digits = 2)) } else ""
+    stats_label <- paste0("WT: n = ", d$n_wt, "  |  Mut: n = ", d$n_mut, if (nchar(wilcox_ptxt) > 0) paste0("  |  ", wilcox_ptxt) else "")
+    p <- ggplot(auc_sub, aes(x = Status, y = auc, fill = Status)) +
       geom_boxplot(alpha = 0.8, outlier.alpha = 0.5) +
       scale_fill_manual(values = c("WT" = "#4D4D4D", "Mut" = mut_col), guide = "none") +
       coord_cartesian(ylim = d$y_lim) +
-      labs(title = paste0(gene, " + ", drug), subtitle = stats_label, x = NULL, y = "Drug AUC") +
+      labs(title = paste0(gene, " + ", drug), subtitle = stats_label, x = paste0(gene, " Status"), y = "Drug AUC") +
       theme_minimal(base_size = 14) +
       theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 13, face = "bold"), plot.subtitle = element_text(size = 10, color = "gray40"))
+    gc()
+    p
   })
 
   output$drug_scatter_plot <- renderPlot({
     d <- drug_scatter_shared()
-    if (is.null(d)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select inhibitor and gene") + theme_minimal(base_size = 14))
+    empty_plot <- ggplot() +
+      annotate("text", x = 0.5, y = 0.5, label = "Select Gene and Inhibitor", size = 5) +
+      theme_void() +
+      theme(panel.background = element_rect(fill = "white"), plot.background = element_rect(fill = "white"), aspect.ratio = 1)
+    if (is.null(d)) return(empty_plot)
     merged <- d$merged
     if (nrow(merged) < 5) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient samples") + theme_minimal(base_size = 14))
     gene <- input$drug_gene
@@ -2375,7 +2825,7 @@ server <- function(input, output, session) {
     r2 <- round(summary(fit)$r.squared, 3)
     pv <- summary(fit)$coefficients[2, 4]
     ptxt <- if (pv < 0.001) "p < 0.001" else paste0("p = ", format.pval(pv, digits = 2))
-    ggplot(merged, aes(x = VAF, y = auc)) +
+    p <- ggplot(merged, aes(x = VAF, y = auc)) +
       geom_point(size = 3, alpha = 0.8, color = line_col) +
       geom_smooth(method = "lm", se = TRUE, color = line_col, fill = line_col, alpha = 0.2) +
       coord_cartesian(ylim = d$y_lim) +
@@ -2383,11 +2833,13 @@ server <- function(input, output, session) {
         subtitle = paste0("R² = ", r2, ", ", ptxt)) +
       theme_minimal(base_size = 14) +
       theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 13, face = "bold"), plot.subtitle = element_text(size = 10, color = "gray40"))
+    gc()
+    p
   })
 
   output$drug_correlation_table <- renderDT({
     corr <- drug_correlations()
-    if (is.null(corr) || nrow(corr) == 0) return(NULL)
+    if (is.null(corr) || nrow(corr) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 15)))
     cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "LOOCV_MSE_sd", "n", "VAF_range", "AUC_range")
     cols <- cols[cols %in% colnames(corr)]
     df <- corr[order(corr$p_value), cols, drop = FALSE]
@@ -2396,6 +2848,7 @@ server <- function(input, output, session) {
     }
     if ("p_value" %in% colnames(df)) df$p_value <- format_pval_display(df$p_value)
     if ("q_value" %in% colnames(df)) df$q_value <- format_pval_display(df$q_value)
+    gc()
     datatable(df, filter = "top", options = list(pageLength = 15))
   })
 
@@ -2408,12 +2861,14 @@ server <- function(input, output, session) {
     loo$Gene <- factor(loo$Gene, levels = rev(gene_meds$Gene[order(gene_meds$RMSE)]))
     inh_meds <- aggregate(RMSE ~ Inhibitor, data = loo, FUN = median)
     loo$Inhibitor <- factor(loo$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$RMSE)])
-    ggplot(loo, aes(x = Inhibitor, y = Gene, fill = RMSE)) +
+    p <- ggplot(loo, aes(x = Inhibitor, y = Gene, fill = RMSE)) +
       geom_tile(color = "white", linewidth = 0.3) +
       scale_fill_viridis_c(option = "viridis", name = "RMSE") +
       labs(x = "Inhibitor", y = "Gene") +
       theme_minimal(base_size = 14) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.text = element_text(size = 11), legend.title = element_text(size = 12))
+    gc()
+    p
   })
 
   # ---- All Gene Associations tab: comprehensive summary for a single gene ----
@@ -2567,57 +3022,72 @@ server <- function(input, output, session) {
     g <- input$gene_summary
     if (is.null(g) || g == "") {
       return(wellPanel(
-        p(strong("Select a gene"), " from ", strong("Summarize all associations for a single gene"), " in the sidebar to view a comprehensive summary of all associations for that gene, including:"),
-        tags$ul(
-          tags$li("Oncoprint of co-mutations in samples with the gene mutated"),
-          tags$li("Co-mutation heatmap (this gene vs others)"),
-          tags$li("Mutation distribution"),
-          tags$li("Kaplan-Meier survival (single gene)"),
-          tags$li("Pairwise and triple co-mutation survival plots"),
-          tags$li("Clinical associations"),
-          tags$li("VAF distribution and VAF vs survival (MaxStat)"),
-          tags$li("Drug sensitivity associations")
-        )
+        p(strong("Select a gene"), " from ", strong("Summarize all associations for a single gene"), " in the sidebar to view a comprehensive summary of all associations for that gene.")
       ))
     }
-    df <- filtered_data()
-    genes_other <- setdiff(sort(unique(as.character(df$Gene_for_analysis))), g)
     tagList(
       wellPanel(
         h3("All associations for: ", g),
         uiOutput("gene_ncbi_summary"),
         uiOutput("gene_civic_summary")
       ),
-      wellPanel(h4("Clinical associations"), plotOutput("gene_summary_clinical_plot", height = 260)),
-      fluidRow(
-        column(9, wellPanel(h4("Oncoprint: Co-mutations in samples with this gene mutated"), plotOutput("gene_summary_oncoprint", height = 480))),
-        column(3, wellPanel(h4("Co-mutation Odds Ratio"), plotOutput("gene_summary_comut_heatmap", height = 480)))
+      tabsetPanel(
+        id = "gene_summary_sub_tabs",
+        type = "tabs",
+        selected = if (is.null(selected_gene_summary_sub_tab()) || !selected_gene_summary_sub_tab() %in% c("clinical", "comut", "vaf", "drug")) "clinical" else selected_gene_summary_sub_tab(),
+        tabPanel("Clinical", value = "clinical"),
+        tabPanel("Co-mutation", value = "comut"),
+        tabPanel("VAF", value = "vaf"),
+        tabPanel("Drug Sensitivity", value = "drug")
       ),
-      fluidRow(
-        column(6, wellPanel(h4("Mutation distribution"), plotOutput("gene_summary_lollipop_plot", height = 380))),
-        column(6, wellPanel(h4("Kaplan-Meier: Single gene"), plotOutput("gene_summary_survival", height = 480)))
+      uiOutput("gene_summary_sub_content")
+    )
+  })
+
+  # Only render the active sub-tab's content so only those outputs exist (reduces memory)
+  output$gene_summary_sub_content <- renderUI({
+    if (!input$main_nav %in% c("analyses", "meta_aml4")) return(NULL)
+    g <- input$gene_summary
+    sub <- input$gene_summary_sub_tabs
+    if (is.null(sub) || !sub %in% c("clinical", "comut", "vaf", "drug")) sub <- "clinical"
+    if (is.null(g) || g == "") return(NULL)
+    df <- filtered_data()
+    genes_other <- setdiff(sort(unique(as.character(df$Gene_for_analysis))), g)
+    switch(sub,
+      clinical = tagList(
+        wellPanel(h4("Clinical associations"), plotOutput("gene_summary_clinical_plot", height = 260)),
+        fluidRow(
+          column(6, wellPanel(h4("Mutation distribution"), plotOutput("gene_summary_lollipop_plot", height = 380))),
+          column(6, wellPanel(h4("Kaplan-Meier: Single gene"), plotOutput("gene_summary_survival", height = 480)))
+        )
       ),
-      fluidRow(
-        column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Pairwise co-mutation survival"), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
-        column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Triple co-mutation survival"), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
+      comut = tagList(
+        fluidRow(
+          column(9, wellPanel(h4("Oncoprint: Co-mutations in samples with this gene mutated"), plotOutput("gene_summary_oncoprint", height = 480))),
+          column(3, wellPanel(h4("Odds Ratio Statistics"), p(em("Calculated from all samples in the filtered subset, not just those with the gene mutated."), style = "font-size: 11px; color: #666; margin-bottom: 8px;"), plotOutput("gene_summary_comut_heatmap", height = 480)))
+        ),
+        fluidRow(
+          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Pairwise co-mutation survival"), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
+          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Triple co-mutation survival"), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
+        )
       ),
-      br(),
-      fluidRow(
+      vaf = fluidRow(
         column(6, wellPanel(h4("VAF distribution"), plotOutput("gene_summary_vaf_plot", height = 350))),
         column(6, wellPanel(h4("VAF and survival (MaxStat)"), plotOutput("gene_summary_vaf_survival_plot", height = 350)))
       ),
-      wellPanel(
+      drug = wellPanel(
         style = "background-color: #e9ecef;",
         h4("Drug sensitivity (Beat AML)"),
         fluidRow(
-          column(6, wellPanel(h5("Mut vs WT volcano (drug AUC)"), plotOutput("gene_summary_drug_volcano", height = 400))),
-          column(6, wellPanel(h5("VAF vs AUC summary (this gene)"), plotOutput("gene_summary_drug_dotplot", height = 400)))
+          column(6, wellPanel(h5("Mut vs WT Inhibitor Sensitivity"), plotOutput("gene_summary_drug_volcano", height = 400))),
+          column(6, wellPanel(h5("Mutation VAF vs Inhibitor Sensitivity"), plotOutput("gene_summary_drug_dotplot", height = 400)))
         ),
         fluidRow(
-          column(6, wellPanel(h5("VAF–AUC correlations (this gene)"), div(style = "height: 300px; overflow-y: auto;", DTOutput("gene_summary_drug_table")))),
-          column(6, wellPanel(h5("LOOCV RMSE heatmap (ordered by RMSE)"), plotOutput("gene_summary_drug_loo_heatmap", height = 350)))
+          column(6, wellPanel(h5("Mut vs WT Results Summary"), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). All gene–inhibitor pairs with ≥5 mut samples (filtered subset)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_mut_wt_table")))),
+          column(6, wellPanel(h5("VAF–AUC correlations Summary"), div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_table"))))
         )
-      )
+      ),
+      NULL
     )
   })
 
@@ -2683,6 +3153,7 @@ server <- function(input, output, session) {
       }
       a[match(samples, a$Sample), , drop = FALSE]
     }
+    gc()
     list(temp_dat = temp_dat, anno_df = anno_df, samples = samples, genes = top_genes)
   })
 
@@ -2777,6 +3248,10 @@ server <- function(input, output, session) {
     mat <- cooc$matrix
     others <- setdiff(colnames(mat), g)
     if (length(others) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No other genes"))
+    # Filter to genes passing min. gene frequency for display only
+    keep_genes <- filtered_genes()
+    if (length(keep_genes) > 0) others <- intersect(others, keep_genes)
+    if (length(others) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No other genes pass frequency filter"))
     vec <- mat[others, g]
     vec_log <- log2(vec + 0.01)
     vec_log[vec_log > 2] <- 2
@@ -2787,7 +3262,7 @@ server <- function(input, output, session) {
     ggplot(df_plot, aes(x = 1, y = Gene, fill = log2OR)) +
       geom_tile() +
       scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) +
-      labs(x = NULL, y = NULL, fill = "log2(OR)", title = paste("Co-occurrence with", g)) +
+      labs(x = NULL, y = NULL, fill = "log2(OR)", title = paste("Co-occurrence\nwith", g)) +
       theme_minimal(base_size = 14) +
       theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
   })
@@ -2795,85 +3270,39 @@ server <- function(input, output, session) {
   output$gene_summary_lollipop_plot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void())
-    df <- filtered_data()
-    if (is.null(df) || nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void())
-    df <- df[as.character(df$Gene_for_analysis) == g, , drop = FALSE]
-    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No mutations for", g)) + theme_void())
+    df <- gene_summary_data()
+    if (is.null(df) || nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No mutations for", g)) + theme_void())
     aa_col <- if ("HGVSp_Short" %in% colnames(df)) "HGVSp_Short" else if ("AA_change" %in% colnames(df)) "AA_change" else if ("Protein_Change" %in% colnames(df)) "Protein_Change" else if ("protein" %in% colnames(df)) "protein" else NULL
-    if (has_maftools && !is.null(aa_col)) {
-      g_base <- gsub("^([A-Z0-9]+)[_-].*$", "\\1", g)
-      if (!grepl("^[A-Z0-9]+$", g_base)) g_base <- g
-      norm <- normalize_protein_change_for_maf(df[[aa_col]])
-      hgvsp <- norm$hgvsp
-      has_position <- !is.na(norm$position) & hgvsp != "p.?"
-      if (sum(has_position) >= 1) {
-        df_maf <- df[has_position & !is.na(df$Sample) & as.character(df$Sample) != "", , drop = FALSE]
-        hgvsp_maf <- hgvsp[has_position & !is.na(df$Sample) & as.character(df$Sample) != ""]
-        if (nrow(df_maf) < 1) {
-          return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No valid samples with AA positions for lollipopPlot") + theme_void())
-        }
-        vt <- if ("variant_type" %in% colnames(df_maf)) as.character(df_maf$variant_type) else rep(NA_character_, nrow(df_maf))
-        vc <- rep("Missense_Mutation", length(vt))
-        vc[vt %in% c("Deletion", "Frame_Shift_Del", "Frame_Shift_Del")] <- "Frame_Shift_Del"
-        vc[vt %in% c("Indel", "In_Frame_Del")] <- "In_Frame_Del"
-        vc[vt %in% c("ITD", "Insertion", "In_Frame_Ins")] <- "In_Frame_Ins"
-        vc[vt %in% c("Splicing", "Splice_Site")] <- "Splice_Site"
-        vc[vt %in% c("PTD")] <- "In_Frame_Ins"
-        vc[is.na(vt) | vt %in% c("Other", "Unknown", "")] <- "Unknown"
-        vtype <- rep("SNP", length(vt))
-        vtype[vt %in% c("ITD", "Insertion", "PTD")] <- "INS"
-        vtype[vt %in% c("Deletion", "Indel")] <- "DEL"
-        base <- 1000000L
-        maf_df <- data.frame(
-          Hugo_Symbol = rep(g_base, nrow(df_maf)),
-          Chromosome = "1",
-          Start_Position = base + seq_len(nrow(df_maf)),
-          End_Position = base + seq_len(nrow(df_maf)),
-          Reference_Allele = rep("N", nrow(df_maf)),
-          Tumor_Seq_Allele1 = rep("N", nrow(df_maf)),
-          Tumor_Seq_Allele2 = rep("N", nrow(df_maf)),
-          Variant_Classification = vc,
-          Variant_Type = vtype,
-          Tumor_Sample_Barcode = as.character(df_maf$Sample),
-          HGVSp_Short = hgvsp_maf,
-          stringsAsFactors = FALSE
-        )
-        maf_obj <- tryCatch(maftools::read.maf(maf = maf_df, verbose = FALSE), error = function(e) {
-          warning("read.maf failed: ", conditionMessage(e))
-          NULL
-        })
-        if (!is.null(maf_obj) && inherits(maf_obj, "MAF")) {
-          ok <- tryCatch({
-            maftools::lollipopPlot(maf_obj, gene = g_base, AACol = "HGVSp_Short", showMutationRate = FALSE)
-            TRUE
-          }, error = function(e) {
-            warning("lollipopPlot failed for ", g_base, ": ", conditionMessage(e))
-            FALSE
-          })
-          if (isTRUE(ok)) return(invisible(NULL))
-        }
-      }
-    }
-    if (!has_maftools) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install maftools to render lollipop plots") + theme_void())
-    }
-    if (is.null(aa_col)) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No protein-change column available for lollipopPlot (need AA_change / HGVSp_Short)") + theme_void())
-    }
-    ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Unable to render lollipopPlot for this selection") + theme_void()
+    if (is.null(aa_col)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No protein-change column (need AA_change / HGVSp_Short)") + theme_void())
+    g_base <- gsub("^([A-Z0-9]+)[_-].*$", "\\1", g)
+    if (!grepl("^[A-Z0-9]+$", g_base)) g_base <- g
+    norm <- normalize_protein_change_for_maf(df[[aa_col]])
+    has_position <- !is.na(norm$position) & norm$hgvsp != "p.?"
+    if (sum(has_position) < 1L) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No valid AA positions for lollipop") + theme_void())
+    pos <- norm$position[has_position]
+    pos_range <- range(pos, na.rm = TRUE)
+    if (diff(pos_range) < 1) pos_range <- pos_range + c(-5, 5)
+    pos_counts <- as.data.frame(table(Position = pos), stringsAsFactors = FALSE)
+    pos_counts$Position <- as.integer(pos_counts$Position)
+    pos_counts$Freq <- as.numeric(pos_counts$Freq)
+    if (nrow(pos_counts) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No positions to plot") + theme_void())
+    ggplot(pos_counts, aes(x = Position, y = Freq)) +
+      geom_segment(aes(x = Position, xend = Position, y = 0, yend = Freq), linewidth = 0.8, color = "#374e55") +
+      geom_point(size = 3, color = "#8B0000", fill = "#8B0000", shape = 21) +
+      labs(title = paste("Mutation distribution:", g_base), x = "Protein position", y = "Count") +
+      theme_minimal(base_size = 12) +
+      scale_x_continuous(limits = pos_range + c(-1, 1) * 0.02 * diff(pos_range))
   })
 
   output$gene_summary_survival <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
-    surv_df <- survival_data()
-    mut_samples <- unique(surv_df$Sample[surv_df$Gene_for_analysis == g])
-    surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
-    surv_uniq$Mutation <- ifelse(surv_uniq$Sample %in% mut_samples, paste0(g, " mut"), "WT")
+    surv_uniq <- gene_summary_survival_km_data()
+    if (is.null(surv_uniq) || nrow(surv_uniq) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No survival data"))
     if (length(unique(surv_uniq$Mutation)) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient groups"))
     fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Mutation, data = surv_uniq)
     if (has_survminer) {
-      p <- survminer::ggsurvplot(fit, data = surv_uniq, risk.table = TRUE, pval = TRUE, title = paste("Survival by", g), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = gsub("^Mutation=", "", names(fit$strata)))
+      p <- survminer::ggsurvplot(fit, data = surv_uniq, risk.table = TRUE, pval = TRUE, title = paste("Survival by", g), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = gsub("^Mutation=", "", names(fit$strata)), pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer for KM plot") + theme_void()
@@ -2904,7 +3333,7 @@ server <- function(input, output, session) {
       pal_all <- unname(c(PAL_SUBSET, PAL_MUT_CAT, PAL_COHORT))
       pal_vec <- pal_all[seq_len(n_groups)]
       if (length(pal_vec) < n_groups) pal_vec <- rep(pal_all, length.out = n_groups)
-      p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Pairwise co-mutation survival", xlab = "Years", palette = pal_vec, legend.labs = gsub("^Group=", "", names(fit$strata)))
+      p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Pairwise co-mutation survival", xlab = "Years", palette = pal_vec, legend.labs = gsub("^Group=", "", names(fit$strata)), pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer") + theme_void()
@@ -2943,7 +3372,7 @@ server <- function(input, output, session) {
       pal_all <- unname(c(PAL_SUBSET, PAL_MUT_CAT, PAL_COHORT))
       pal_vec <- pal_all[seq_len(n_groups)]
       if (length(pal_vec) < n_groups) pal_vec <- rep(pal_all, length.out = n_groups)
-      p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Triple co-mutation survival", xlab = "Years", palette = pal_vec, legend.labs = gsub("^Group=", "", names(fit$strata)), risk.table.height = 0.4)
+      p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Triple co-mutation survival", xlab = "Years", palette = pal_vec, legend.labs = gsub("^Group=", "", names(fit$strata)), risk.table.height = 0.4, pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer") + theme_void()
@@ -2953,12 +3382,16 @@ server <- function(input, output, session) {
   output$gene_summary_clinical_plot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
-    df <- filtered_data()
+    df_full <- filtered_data()
+    if (is.null(df_full)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     clin_vars <- c("Age", "BM_blast_percent", "PB_blast_percent", "WBC", "Hemoglobin", "Platelet")
-    clin_vars <- clin_vars[clin_vars %in% colnames(df)]
+    clin_vars <- clin_vars[clin_vars %in% colnames(df_full)]
     if (length(clin_vars) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No clinical variables in data"))
-    samples_with_g <- unique(df$Sample[as.character(df$Gene_for_analysis) == g])
-    df_one <- df[!duplicated(df$Sample), c("Sample", clin_vars), drop = FALSE]
+    cols_needed <- c("Sample", "Gene_for_analysis", clin_vars)
+    df <- df_full[!duplicated(df_full$Sample), cols_needed[cols_needed %in% colnames(df_full)], drop = FALSE]
+    samples_with_g <- unique(df_full$Sample[as.character(df_full$Gene_for_analysis) == g])
+    df_full <- NULL
+    df_one <- df[, c("Sample", clin_vars[clin_vars %in% colnames(df)]), drop = FALSE]
     mut_lab <- paste0(g, " mut")
     df_one$Mutation <- ifelse(df_one$Sample %in% samples_with_g, mut_lab, "WT")
     long_list <- list()
@@ -3056,7 +3489,7 @@ server <- function(input, output, session) {
     if (has_survminer) {
       legend_labs <- gsub("^Group=", "", names(fit$strata))
       # Unnamed palette: first = High VAF (red), second = Low VAF (grey); Group factor ensures this order
-      p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low VAF (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = legend_labs)
+      p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low VAF (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = legend_labs, pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer") + theme_void()
@@ -3075,12 +3508,11 @@ server <- function(input, output, session) {
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     base_genes <- gene_to_beataml_bases(g)
     mut_samples <- unique(b$mutations$Sample[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed])
-    auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
-    if (nrow(auc_wide) == 0) return(NULL)
-    inhibitors <- unique(auc_wide$inhibitor)
+    inhibitors <- unique(b$auc$inhibitor)
     res_list <- list()
     for (inh in inhibitors) {
-      sub <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
+      sub <- b$auc[b$auc$inhibitor == inh & b$auc$Sample %in% allowed, c("Sample", "auc"), drop = FALSE]
+      if (nrow(sub) < 5) next
       sub$mut <- sub$Sample %in% mut_samples
       mut_auc <- sub$auc[sub$mut]
       wt_auc <- sub$auc[!sub$mut]
@@ -3093,7 +3525,9 @@ server <- function(input, output, session) {
       res_list[[length(res_list) + 1L]] <- data.frame(Inhibitor = inh, delta_AUC_mut_wt = delta, p_value = pval, n_mut = n_mut, n_wt = n_wt, stringsAsFactors = FALSE)
     }
     if (length(res_list) == 0) return(NULL)
-    do.call(rbind, res_list)
+    out <- do.call(rbind, res_list)
+    gc()
+    out
   })
 
   output$gene_summary_drug_volcano <- renderPlot({
@@ -3133,13 +3567,58 @@ server <- function(input, output, session) {
         p <- p + geom_text(data = df_label, aes(x = delta_AUC_mut_wt, y = neglog10p, label = Inhibitor), hjust = -0.1, size = 5, show.legend = FALSE)
       }
     }
+    gc()
     p
+  })
+
+  output$gene_summary_drug_mut_wt_table <- renderDT({
+    g <- input$gene_summary
+    if (is.null(g) || g == "") return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    mut_wt <- gene_summary_drug_mut_wt()
+    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    b <- beataml_for_drug()
+    if (is.null(b) || !b$ok) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    subset <- input$subset
+    if (is.null(subset) || subset == "All") subset <- "de_novo"
+    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
+    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
+    base_genes <- gene_to_beataml_bases(g)
+    mut_samples <- unique(b$mutations$Sample[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed])
+    auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
+    mean_mut_auc <- numeric(nrow(mut_wt))
+    mean_wt_auc <- numeric(nrow(mut_wt))
+    for (i in seq_len(nrow(mut_wt))) {
+      inh <- mut_wt$Inhibitor[i]
+      sub_auc <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
+      mut_auc_vals <- sub_auc$auc[sub_auc$Sample %in% mut_samples]
+      wt_auc_vals <- sub_auc$auc[!sub_auc$Sample %in% mut_samples]
+      mean_mut_auc[i] <- mean(mut_auc_vals, na.rm = TRUE)
+      mean_wt_auc[i] <- mean(wt_auc_vals, na.rm = TRUE)
+    }
+    q_val <- p.adjust(mut_wt$p_value, method = "BH")
+    resistance_trend <- ifelse(mut_wt$delta_AUC_mut_wt > 0, "Resistant", ifelse(mut_wt$delta_AUC_mut_wt < 0, "Sensitive", "Neutral"))
+    df <- data.frame(
+      Gene = g,
+      Inhibitor = mut_wt$Inhibitor,
+      `n mut` = as.integer(mut_wt$n_mut),
+      `n WT` = as.integer(mut_wt$n_wt),
+      `Mean Mut AUC` = round(mean_mut_auc, 2),
+      `Mean WT AUC` = round(mean_wt_auc, 2),
+      `Delta AUC` = round(mut_wt$delta_AUC_mut_wt, 3),
+      `p value` = format_pval_display(mut_wt$p_value),
+      `q value` = format_pval_display(q_val),
+      `Resistance Trend` = resistance_trend,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    datatable(df, filter = "top", options = list(pageLength = 15, scrollX = TRUE), rownames = FALSE)
   })
 
   output$gene_summary_drug_dotplot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void())
-    corr <- gene_summary_drug_correlations()
+    corr <- gene_summary_drug_correlations_gene()
     if (is.null(corr) || nrow(corr) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No drug data (Beat AML)") + theme_void())
     if ("n" %in% colnames(corr)) corr <- corr[!is.na(corr$n) & corr$n >= 10, , drop = FALSE]
     base_genes <- gene_to_beataml_bases(g)
@@ -3147,7 +3626,9 @@ server <- function(input, output, session) {
     if (nrow(sub) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No VAF–AUC correlations for", g)) + theme_void())
     sub <- sub[!is.na(sub$p_value) & sub$p_value < 0.05, , drop = FALSE]
     if (nrow(sub) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No VAF–AUC correlations with p < 0.05 for", g)) + theme_void())
+    sub <- sub[order(sub$p_value), , drop = FALSE]
     inhibitors <- unique(sub$Inhibitor)
+    if (length(inhibitors) > 24) inhibitors <- head(inhibitors, 24)
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void())
     subset <- input$subset
@@ -3184,34 +3665,39 @@ server <- function(input, output, session) {
     scatter_df$Trend <- factor(scatter_df$Trend, levels = c("Sensitive", "Resistant", "Unknown"))
     label_df <- unique(scatter_df[, c("Inhibitor", "R_squared", "p_value", "q_value", "Trend"), drop = FALSE])
     label_df$star <- ifelse(label_df$q_value < 0.1, "*", "")
-    pval_txt <- ifelse(label_df$p_value < 0.001, "< 0.001", format.pval(label_df$p_value, digits = 2))
+    pval_txt <- format_pval_display(label_df$p_value)
     label_df$label <- paste0("R² = ", round(label_df$R_squared, 3), ", p ", pval_txt, label_df$star)
     trend_colors <- c("Sensitive" = "#b2182b", "Resistant" = "#2166ac", "Unknown" = "gray50")
-    ggplot(scatter_df, aes(x = VAF, y = auc, color = Trend)) +
+    p <- ggplot(scatter_df, aes(x = VAF, y = auc, color = Trend)) +
       geom_point(size = 2.5, alpha = 0.7) +
       geom_smooth(method = "lm", se = TRUE, alpha = 0.2, linewidth = 0.8) +
       scale_color_manual(values = trend_colors, name = "Trend", guide = "none") +
       facet_wrap(~ Inhibitor, scales = "free", ncol = min(3, length(inhibitors))) +
       labs(x = "VAF (%)", y = "Drug AUC", title = paste("VAF vs AUC scatterplots:", g, "(p < 0.05)")) +
-      theme_minimal(base_size = 12) +
+      theme_minimal(base_size = 16) +
       theme(
-        strip.text = element_text(size = 11, face = "bold"),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 15),
+        strip.text = element_text(size = 14, face = "bold"),
         strip.background = element_rect(fill = "#f0f0f0", color = NA),
         panel.spacing = unit(1, "lines"),
-        plot.title = element_text(size = 13, face = "bold")
+        plot.title = element_text(size = 17, face = "bold")
       ) +
-      geom_text(aes(x = Inf, y = Inf, label = label), hjust = 1.1, vjust = 1.5, size = 3, inherit.aes = FALSE, data = label_df)
+      geom_text(aes(x = Inf, y = Inf, label = label), hjust = 1.1, vjust = 1.5, size = 4, inherit.aes = FALSE, data = label_df)
+    gc()
+    p
   })
 
   output$gene_summary_drug_table <- renderDT({
+    empty_drug <- datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 10))
     g <- input$gene_summary
-    if (is.null(g) || g == "") return(NULL)
-    corr <- gene_summary_drug_correlations()
-    if (is.null(corr) || nrow(corr) == 0) return(NULL)
+    if (is.null(g) || g == "") return(empty_drug)
+    corr <- gene_summary_drug_correlations_gene()
+    if (is.null(corr) || nrow(corr) == 0) return(empty_drug)
     if ("n" %in% colnames(corr)) corr <- corr[!is.na(corr$n) & corr$n >= 10, , drop = FALSE]
     base_genes <- gene_to_beataml_bases(g)
     sub <- corr[corr$Gene %in% base_genes, , drop = FALSE]
-    if (nrow(sub) == 0) return(NULL)
+    if (nrow(sub) == 0) return(empty_drug)
     cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "n", "VAF_range", "AUC_range")
     cols <- cols[cols %in% colnames(sub)]
     df <- sub[order(sub$p_value), cols, drop = FALSE]
@@ -3220,13 +3706,14 @@ server <- function(input, output, session) {
     }
     if ("p_value" %in% colnames(df)) df$p_value <- format_pval_display(df$p_value)
     if ("q_value" %in% colnames(df)) df$q_value <- format_pval_display(df$q_value)
+    gc()
     datatable(df, options = list(pageLength = 10))
   })
 
   output$gene_summary_drug_loo_heatmap <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void())
-    corr <- gene_summary_drug_correlations()
+    corr <- gene_summary_drug_correlations_gene()
     if (is.null(corr) || nrow(corr) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No drug data (Beat AML)") + theme_void())
     if ("n" %in% colnames(corr)) corr <- corr[!is.na(corr$n) & corr$n >= 10, , drop = FALSE]
     base_genes <- gene_to_beataml_bases(g)
@@ -3234,12 +3721,14 @@ server <- function(input, output, session) {
     if (nrow(sub) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No LOOCV RMSE data for", g)) + theme_void())
     inh_ord <- sub$Inhibitor[order(sub$LOOCV_RMSE)]
     sub$Inhibitor <- factor(sub$Inhibitor, levels = inh_ord)
-    ggplot(sub, aes(x = Inhibitor, y = Gene, fill = LOOCV_RMSE)) +
+    p <- ggplot(sub, aes(x = Inhibitor, y = Gene, fill = LOOCV_RMSE)) +
       geom_tile(color = "white", linewidth = 0.3) +
       scale_fill_viridis_c(option = "viridis", name = "RMSE") +
       labs(x = "Inhibitor", y = NULL, title = paste("LOOCV RMSE:", g)) +
       theme_minimal(base_size = 12) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+    gc()
+    p
   })
 
   output$data_table <- renderDT({

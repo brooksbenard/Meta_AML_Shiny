@@ -1,0 +1,6 @@
+# Exclude from shinyapps.io deploy bundle (keeps deploy under 1GB)
+.git
+.gitignore
+.Rhistory
+.DS_Store
+*.Rproj

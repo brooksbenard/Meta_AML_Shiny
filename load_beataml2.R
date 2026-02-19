@@ -232,6 +232,40 @@ compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5
   out
 }
 
+# Mut vs WT t-test for all gene-inhibitor pairs (n_mut >= 5 with AUC data); used for heatmap and precomputation
+compute_mut_wt_all <- function(beataml, subset = "de_novo") {
+  if (is.null(beataml) || !beataml$ok || !"auc" %in% names(beataml) || !"mutations" %in% names(beataml)) return(NULL)
+  allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(beataml, subset) else beataml$overlap_samples
+  auc_wide <- beataml$auc[beataml$auc$Sample %in% allowed, , drop = FALSE]
+  mut_wide <- beataml$mutations[beataml$mutations$Sample %in% allowed, , drop = FALSE]
+  if (nrow(auc_wide) == 0 || nrow(mut_wide) == 0) return(NULL)
+  genes <- names(which(table(mut_wide$Gene) >= 5))
+  inhibitors <- unique(auc_wide$inhibitor)
+  if (length(genes) == 0 || length(inhibitors) == 0) return(NULL)
+  res_list <- list()
+  for (g in genes) {
+    mut_samples <- unique(mut_wide$Sample[mut_wide$Gene == g])
+    if (length(mut_samples) < 5) next
+    for (inh in inhibitors) {
+      sub <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
+      sub$mut <- sub$Sample %in% mut_samples
+      mut_auc <- sub$auc[sub$mut]
+      wt_auc <- sub$auc[!sub$mut]
+      n_mut <- length(mut_auc)
+      n_wt <- length(wt_auc)
+      if (n_mut < 5) next
+      delta <- mean(mut_auc, na.rm = TRUE) - mean(wt_auc, na.rm = TRUE)
+      tt <- tryCatch(t.test(mut_auc, wt_auc), error = function(e) NULL)
+      pval <- if (!is.null(tt)) tt$p.value else NA_real_
+      res_list[[length(res_list) + 1L]] <- data.frame(Gene = g, Inhibitor = inh, delta_AUC_mut_wt = delta, p_value = pval, n_mut = n_mut, n_wt = n_wt, stringsAsFactors = FALSE)
+    }
+  }
+  if (length(res_list) == 0) return(NULL)
+  out <- do.call(rbind, res_list)
+  out$q_value <- p.adjust(out$p_value, method = "BH")
+  out
+}
+
 # Leave-one-out cross-validation for VAF-AUC correlations (MSE via bestglm::LOOCV)
 # See https://www.rdocumentation.org/packages/bestglm/versions/0.37.3/topics/LOOCV
 compute_drug_vaf_loo <- function(beataml, subset = "de_novo", min_n = 8, min_delta_vaf = 25, min_delta_auc = 75) {
