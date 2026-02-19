@@ -1027,6 +1027,18 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
+  # When switching main tab, clear the *other* tab's filtered-data cache so only one full subset is in memory (reduces OOM)
+  observeEvent(input$main_nav, {
+    nav <- input$main_nav
+    if (nav == "meta_aml4") {
+      cached_filtered_data$analyses <- NULL
+      cached_data_params$analyses <- NULL
+    } else if (nav == "analyses") {
+      cached_filtered_data$meta_aml4 <- NULL
+      cached_data_params$meta_aml4 <- NULL
+    }
+  }, ignoreInit = TRUE)
+
   # Use effective cohort so that when switching tabs the first render shows correct data
   # (stale cohort value from other tab is treated as "All" until dropdown updates)
   effective_cohort <- reactive({
@@ -1474,6 +1486,18 @@ server <- function(input, output, session) {
     df <- df[!is.na(df$Time_to_OS) & !is.na(df$Censor), , drop = FALSE]
     df$Time_to_OS <- as.numeric(df$Time_to_OS) / 365
     df
+  })
+
+  # Minimal survival table for Single Gene KM only (reduces memory: one row per sample, 4 columns)
+  gene_summary_survival_km_data <- reactive({
+    g <- input$gene_summary
+    if (is.null(g) || g == "") return(NULL)
+    surv_df <- survival_data()
+    if (is.null(surv_df) || nrow(surv_df) == 0) return(NULL)
+    mut_samples <- unique(surv_df$Sample[as.character(surv_df$Gene_for_analysis) == g])
+    out <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor"), drop = FALSE]
+    out$Mutation <- ifelse(out$Sample %in% mut_samples, paste0(g, " mut"), "WT")
+    out
   })
 
   output$survival_plot <- renderPlot({
@@ -2877,81 +2901,37 @@ server <- function(input, output, session) {
   output$gene_summary_lollipop_plot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void())
-    df <- filtered_data()
-    if (is.null(df) || nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void())
-    df <- df[as.character(df$Gene_for_analysis) == g, , drop = FALSE]
-    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No mutations for", g)) + theme_void())
+    df <- gene_summary_data()
+    if (is.null(df) || nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No mutations for", g)) + theme_void())
     aa_col <- if ("HGVSp_Short" %in% colnames(df)) "HGVSp_Short" else if ("AA_change" %in% colnames(df)) "AA_change" else if ("Protein_Change" %in% colnames(df)) "Protein_Change" else if ("protein" %in% colnames(df)) "protein" else NULL
-    if (has_maftools && !is.null(aa_col)) {
-      g_base <- gsub("^([A-Z0-9]+)[_-].*$", "\\1", g)
-      if (!grepl("^[A-Z0-9]+$", g_base)) g_base <- g
-      norm <- normalize_protein_change_for_maf(df[[aa_col]])
-      hgvsp <- norm$hgvsp
-      has_position <- !is.na(norm$position) & hgvsp != "p.?"
-      if (sum(has_position) >= 1) {
-        df_maf <- df[has_position & !is.na(df$Sample) & as.character(df$Sample) != "", , drop = FALSE]
-        hgvsp_maf <- hgvsp[has_position & !is.na(df$Sample) & as.character(df$Sample) != ""]
-        if (nrow(df_maf) < 1) {
-          return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No valid samples with AA positions for lollipopPlot") + theme_void())
-        }
-        vt <- if ("variant_type" %in% colnames(df_maf)) as.character(df_maf$variant_type) else rep(NA_character_, nrow(df_maf))
-        vc <- rep("Missense_Mutation", length(vt))
-        vc[vt %in% c("Deletion", "Frame_Shift_Del", "Frame_Shift_Del")] <- "Frame_Shift_Del"
-        vc[vt %in% c("Indel", "In_Frame_Del")] <- "In_Frame_Del"
-        vc[vt %in% c("ITD", "Insertion", "In_Frame_Ins")] <- "In_Frame_Ins"
-        vc[vt %in% c("Splicing", "Splice_Site")] <- "Splice_Site"
-        vc[vt %in% c("PTD")] <- "In_Frame_Ins"
-        vc[is.na(vt) | vt %in% c("Other", "Unknown", "")] <- "Unknown"
-        vtype <- rep("SNP", length(vt))
-        vtype[vt %in% c("ITD", "Insertion", "PTD")] <- "INS"
-        vtype[vt %in% c("Deletion", "Indel")] <- "DEL"
-        base <- 1000000L
-        maf_df <- data.frame(
-          Hugo_Symbol = rep(g_base, nrow(df_maf)),
-          Chromosome = "1",
-          Start_Position = base + seq_len(nrow(df_maf)),
-          End_Position = base + seq_len(nrow(df_maf)),
-          Reference_Allele = rep("N", nrow(df_maf)),
-          Tumor_Seq_Allele1 = rep("N", nrow(df_maf)),
-          Tumor_Seq_Allele2 = rep("N", nrow(df_maf)),
-          Variant_Classification = vc,
-          Variant_Type = vtype,
-          Tumor_Sample_Barcode = as.character(df_maf$Sample),
-          HGVSp_Short = hgvsp_maf,
-          stringsAsFactors = FALSE
-        )
-        maf_obj <- tryCatch(maftools::read.maf(maf = maf_df, verbose = FALSE), error = function(e) {
-          warning("read.maf failed: ", conditionMessage(e))
-          NULL
-        })
-        if (!is.null(maf_obj) && inherits(maf_obj, "MAF")) {
-          ok <- tryCatch({
-            maftools::lollipopPlot(maf_obj, gene = g_base, AACol = "HGVSp_Short", showMutationRate = FALSE)
-            TRUE
-          }, error = function(e) {
-            warning("lollipopPlot failed for ", g_base, ": ", conditionMessage(e))
-            FALSE
-          })
-          if (isTRUE(ok)) return(invisible(NULL))
-        }
-      }
-    }
-    if (!has_maftools) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install maftools to render lollipop plots") + theme_void())
-    }
-    if (is.null(aa_col)) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No protein-change column available for lollipopPlot (need AA_change / HGVSp_Short)") + theme_void())
-    }
-    ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Unable to render lollipopPlot for this selection") + theme_void()
+    if (is.null(aa_col)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No protein-change column (need AA_change / HGVSp_Short)") + theme_void())
+    g_base <- gsub("^([A-Z0-9]+)[_-].*$", "\\1", g)
+    if (!grepl("^[A-Z0-9]+$", g_base)) g_base <- g
+    norm <- normalize_protein_change_for_maf(df[[aa_col]])
+    has_position <- !is.na(norm$position) & norm$hgvsp != "p.?"
+    if (sum(has_position) < 1L) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No valid AA positions for lollipop") + theme_void())
+    pos <- norm$position[has_position]
+    pos_range <- range(pos, na.rm = TRUE)
+    if (diff(pos_range) < 1) pos_range <- pos_range + c(-5, 5)
+    pos_counts <- as.data.frame(table(Position = pos), stringsAsFactors = FALSE)
+    pos_counts$Position <- as.integer(pos_counts$Position)
+    pos_counts$Freq <- as.numeric(pos_counts$Freq)
+    if (nrow(pos_counts) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No positions to plot") + theme_void())
+    p <- ggplot(pos_counts, aes(x = Position, y = Freq)) +
+      geom_segment(aes(x = Position, xend = Position, y = 0, yend = Freq), linewidth = 0.8, color = "#374e55") +
+      geom_point(size = 3, color = "#8B0000", fill = "#8B0000", shape = 21) +
+      labs(title = paste("Mutation distribution:", g_base), x = "Protein position", y = "Count") +
+      theme_minimal(base_size = 12) +
+      scale_x_continuous(limits = pos_range + c(-1, 1) * 0.02 * diff(pos_range))
+    gc()
+    p
   })
 
   output$gene_summary_survival <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
-    surv_df <- survival_data()
-    mut_samples <- unique(surv_df$Sample[surv_df$Gene_for_analysis == g])
-    surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
-    surv_uniq$Mutation <- ifelse(surv_uniq$Sample %in% mut_samples, paste0(g, " mut"), "WT")
+    surv_uniq <- gene_summary_survival_km_data()
+    if (is.null(surv_uniq) || nrow(surv_uniq) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No survival data"))
     if (length(unique(surv_uniq$Mutation)) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient groups"))
     fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Mutation, data = surv_uniq)
     if (has_survminer) {
@@ -3035,12 +3015,16 @@ server <- function(input, output, session) {
   output$gene_summary_clinical_plot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
-    df <- filtered_data()
+    df_full <- filtered_data()
+    if (is.null(df_full)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     clin_vars <- c("Age", "BM_blast_percent", "PB_blast_percent", "WBC", "Hemoglobin", "Platelet")
-    clin_vars <- clin_vars[clin_vars %in% colnames(df)]
+    clin_vars <- clin_vars[clin_vars %in% colnames(df_full)]
     if (length(clin_vars) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No clinical variables in data"))
-    samples_with_g <- unique(df$Sample[as.character(df$Gene_for_analysis) == g])
-    df_one <- df[!duplicated(df$Sample), c("Sample", clin_vars), drop = FALSE]
+    cols_needed <- c("Sample", "Gene_for_analysis", clin_vars)
+    df <- df_full[!duplicated(df_full$Sample), cols_needed[cols_needed %in% colnames(df_full)], drop = FALSE]
+    samples_with_g <- unique(df_full$Sample[as.character(df_full$Gene_for_analysis) == g])
+    df_full <- NULL
+    df_one <- df[, c("Sample", clin_vars[clin_vars %in% colnames(df)]), drop = FALSE]
     mut_lab <- paste0(g, " mut")
     df_one$Mutation <- ifelse(df_one$Sample %in% samples_with_g, mut_lab, "WT")
     long_list <- list()
@@ -3098,7 +3082,7 @@ server <- function(input, output, session) {
     }, numeric(1))
     ann_df$y <- ann_df$y + 0.08 * pmax(y_range_per_var, 1)
     pal_clin <- setNames(c("gray70", "#8B0000"), c("WT", mut_lab))
-    ggplot(long_df, aes(x = Mutation, y = value, fill = Mutation)) +
+    p <- ggplot(long_df, aes(x = Mutation, y = value, fill = Mutation)) +
       geom_boxplot(alpha = 0.8) +
       geom_text(data = ann_df, aes(x = 1.5, y = y, label = sig), inherit.aes = FALSE, size = 5, fontface = "bold") +
       scale_fill_manual(values = pal_clin) +
@@ -3106,6 +3090,8 @@ server <- function(input, output, session) {
       labs(x = NULL, y = NULL) +
       theme_minimal(base_size = 12) +
       theme(legend.position = "none", strip.text = element_text(size = 14, face = "bold"))
+    gc()
+    p
   })
 
   output$gene_summary_vaf_plot <- renderPlot({
