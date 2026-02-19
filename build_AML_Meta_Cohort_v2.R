@@ -188,17 +188,20 @@ tcga_mut <- read.delim("laml_tcga/data_mutations.txt", stringsAsFactors = FALSE,
 tcga_clin_patient <- read.delim("laml_tcga/data_clinical_patient.txt", stringsAsFactors = FALSE, comment.char = "#", skip = 4)
 tcga_clin_sample <- read.delim("laml_tcga/data_clinical_sample.txt", stringsAsFactors = FALSE, comment.char = "#", skip = 4)
 
-# TCGA mutations: Hugo_Symbol, Tumor_Sample_Barcode, t_vaf (if available)
+# TCGA mutations: Hugo_Symbol, Tumor_Sample_Barcode; VAF from TumorVAF_WU only
 tcga_mut$Sample <- tcga_mut$Tumor_Sample_Barcode
 tcga_mut$Gene <- tcga_mut$Hugo_Symbol
-# TCGA may not have t_vaf, use t_alt_count / t_depth if available
-if ("t_vaf" %in% colnames(tcga_mut)) {
-  tcga_mut$VAF <- as.numeric(tcga_mut$t_vaf) * 100
-} else if (all(c("t_alt_count", "t_depth") %in% colnames(tcga_mut))) {
-  tcga_mut$VAF <- (as.numeric(tcga_mut$t_alt_count) / as.numeric(tcga_mut$t_depth)) * 100
-} else {
-  tcga_mut$VAF <- NA_real_
+# TCGA VAF: use only TumorVAF_WU (cBioPortal WashU; may be 0-100 or 0-1)
+tcga_mut$VAF <- NA_real_
+if ("TumorVAF_WU" %in% colnames(tcga_mut)) {
+  v <- as.numeric(tcga_mut$TumorVAF_WU)
+  # If values are in 0-1 scale, convert to 0-100; else assume already 0-100
+  tcga_mut$VAF <- ifelse(!is.na(v) & v <= 1, v * 100, v)
 }
+# Sanity check: TCGA VAF must not be all NA after assignment
+tcga_vaf_ok <- sum(!is.na(tcga_mut$VAF) & tcga_mut$VAF > 0)
+if (tcga_vaf_ok == 0) stop("TCGA VAF is all NA after reading TumorVAF_WU. Check laml_tcga/data_mutations.txt has TumorVAF_WU column and non-empty values.")
+cat("  TCGA VAF: ", tcga_vaf_ok, " / ", nrow(tcga_mut), " mutations with non-NA VAF (from TumorVAF_WU)\n", sep = "")
 tcga_mut$variant_type <- map_variant_type(tcga_mut$Variant_Classification)
 tcga_mut$Gene <- normalize_flt3_gene(tcga_mut$Gene, tcga_mut$variant_type)
 tcga_mut$Cohort <- "TCGA"
@@ -931,6 +934,13 @@ AML_Meta_Cohort_v2 <- all_data[, c("Sample", "Gene", "VAF", "Cohort", "Subset", 
                                     "variant_type", "mutation_category", "AA_change", "Gene_Group",
                                     "Age", "Sex", "Risk", "Karyotype",
                                     "WBC", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent", "LDH")]
+# Ensure TCGA VAF is not all NA in final cohort
+tcga_in_cohort <- AML_Meta_Cohort_v2$Cohort == "TCGA"
+tcga_vaf_n <- sum(tcga_in_cohort)
+tcga_vaf_non_na <- sum(tcga_in_cohort & !is.na(AML_Meta_Cohort_v2$VAF) & AML_Meta_Cohort_v2$VAF > 0)
+if (tcga_vaf_n > 0 && tcga_vaf_non_na == 0) stop("TCGA VAF column is all NA in final AML_Meta_Cohort_v2. Fix TCGA VAF extraction (TumorVAF_WU) before saving.")
+cat("  TCGA in RDS: ", tcga_vaf_non_na, " / ", tcga_vaf_n, " rows with non-NA VAF\n", sep = "")
+
 saveRDS(AML_Meta_Cohort_v2, "AML_Meta_Cohort_v2.rds")
 cat("Saved to AML_Meta_Cohort_v2.rds\n")
 cat("  Final dimensions: ", nrow(AML_Meta_Cohort_v2), " rows, ", ncol(AML_Meta_Cohort_v2), " columns\n", sep = "")
