@@ -648,6 +648,15 @@ server <- function(input, output, session) {
   selected_analyses_tab <- reactiveVal(NULL)
   # Preserve inner tab inside "All Gene Associations" (Single, Co-mutation, VAF, Drug Sensitivity)
   selected_meta4_allgene_tab <- reactiveVal(NULL)
+  # Preserve sub-tab inside Single Gene Associations (Clinical, Co-mutation, VAF, Drug Sensitivity)
+  selected_gene_summary_sub_tab <- reactiveVal("clinical")
+
+  # Precomputed Drug Sensitivity results (Mut vs WT, VAF vs AUC correlations, LOOCV) per subset to reduce memory on deploy
+  precomputed_drug <- NULL
+  tryCatch({
+    path <- file.path(getwd(), "drug_sensitivity_precomputed.rds")
+    if (file.exists(path)) precomputed_drug <- readRDS(path)
+  }, error = function(e) precomputed_drug <- NULL)
 
   # Format p/q for display: < 0.001, < 0.01, < 0.05, or numeric
   format_pval_display <- function(p) {
@@ -979,6 +988,9 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE)
   observeEvent(input$meta4_all_gene_tabs, {
     if (!is.null(input$meta4_all_gene_tabs)) selected_meta4_allgene_tab(input$meta4_all_gene_tabs)
+  })
+  observeEvent(input$gene_summary_sub_tabs, {
+    if (!is.null(input$gene_summary_sub_tabs)) selected_gene_summary_sub_tab(input$gene_summary_sub_tabs)
   }, ignoreNULL = TRUE)
 
   # When user selects a gene from "Summarize all associations for a single gene", switch to Single Gene Associations tab (Meta AML4)
@@ -1605,7 +1617,7 @@ server <- function(input, output, session) {
 
   output$survival_table <- renderDT({
     df <- forest_data()
-    if (nrow(df) == 0) return(NULL)
+    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), HR_CI = character(), p = character(), p_adj = character()), options = list(pageLength = 15), rownames = FALSE))
     df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
     df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
     df$p <- format_pval_display(df$p)
@@ -1708,7 +1720,7 @@ server <- function(input, output, session) {
 
   output$cooccurrence_table <- renderDT({
     cooc <- cooccurrence_data()
-    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(NULL)
+    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10), rownames = FALSE))
     df <- cooc$pairs
     df$pair <- paste(df$gene1, "+", df$gene2)
     df$odds_ratio <- round(df$odds_ratio, 2)
@@ -2098,20 +2110,38 @@ server <- function(input, output, session) {
   drug_correlations <- reactive({
     input$main_nav
     input$drug_subset
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+      pc <- precomputed_drug$meta_aml4[[subset]]$correlations
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
+    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      pc <- precomputed_drug$analyses[[subset]]$correlations
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_correlations")) return(NULL)
-    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     compute_drug_vaf_correlations(b, subset = subset)
   })
 
   drug_loo <- reactive({
     input$main_nav
     input$drug_subset
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+      pc <- precomputed_drug$meta_aml4[[subset]]$loo
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
+    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      pc <- precomputed_drug$analyses[[subset]]$loo
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_loo")) return(NULL)
-    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     compute_drug_vaf_loo(b, subset = subset)
   })
 
@@ -2189,9 +2219,20 @@ server <- function(input, output, session) {
   drug_mut_wt_all <- reactive({
     input$drug_subset
     input$main_nav
+    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+      pc <- precomputed_drug$meta_aml4[[subset]]$mut_wt
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
+    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      pc <- precomputed_drug$analyses[[subset]]$mut_wt
+      if (!is.null(pc) && nrow(pc) > 0) return(pc)
+    }
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok || !"auc" %in% names(b) || !"mutations" %in% names(b)) return(NULL)
-    subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+    if (exists("compute_mut_wt_all")) return(compute_mut_wt_all(b, subset))
+    # Fallback inline if helper not loaded
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
     mut_wide <- b$mutations[b$mutations$Sample %in% allowed, , drop = FALSE]
@@ -2223,26 +2264,52 @@ server <- function(input, output, session) {
     out
   })
 
-  # Drug correlations and LOOCV for gene summary tab (uses main subset filter)
+  # Drug correlations and LOOCV for gene summary tab (uses main subset filter); use precomputed when subset is All/de_novo/secondary
   gene_summary_drug_correlations <- reactive({
-    b <- beataml_for_drug()
-    if (is.null(b) || !b$ok) return(NULL)
-    if (!exists("compute_drug_vaf_correlations")) return(NULL)
+    input$subset
+    input$main_nav
     subset <- input$subset
     if (is.null(subset) || subset == "All") subset <- "de_novo"
     subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
     subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
+      if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+        pc <- precomputed_drug$meta_aml4[[subset]]$correlations
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+      if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+        pc <- precomputed_drug$analyses[[subset]]$correlations
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+    }
+    b <- beataml_for_drug()
+    if (is.null(b) || !b$ok) return(NULL)
+    if (!exists("compute_drug_vaf_correlations")) return(NULL)
     compute_drug_vaf_correlations(b, subset = subset)
   })
 
   gene_summary_drug_loo <- reactive({
-    b <- beataml_for_drug()
-    if (is.null(b) || !b$ok) return(NULL)
-    if (!exists("compute_drug_vaf_loo")) return(NULL)
+    input$subset
+    input$main_nav
     subset <- input$subset
     if (is.null(subset) || subset == "All") subset <- "de_novo"
     subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
     subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    nav <- input$main_nav
+    if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
+      if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
+        pc <- precomputed_drug$meta_aml4[[subset]]$loo
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+      if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+        pc <- precomputed_drug$analyses[[subset]]$loo
+        if (!is.null(pc) && nrow(pc) > 0) return(pc)
+      }
+    }
+    b <- beataml_for_drug()
+    if (is.null(b) || !b$ok) return(NULL)
+    if (!exists("compute_drug_vaf_loo")) return(NULL)
     compute_drug_vaf_loo(b, subset = subset)
   })
 
@@ -2387,7 +2454,7 @@ server <- function(input, output, session) {
 
   output$drug_correlation_table <- renderDT({
     corr <- drug_correlations()
-    if (is.null(corr) || nrow(corr) == 0) return(NULL)
+    if (is.null(corr) || nrow(corr) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 15)))
     cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "LOOCV_MSE_sd", "n", "VAF_range", "AUC_range")
     cols <- cols[cols %in% colnames(corr)]
     df <- corr[order(corr$p_value), cols, drop = FALSE]
@@ -2567,46 +2634,60 @@ server <- function(input, output, session) {
     g <- input$gene_summary
     if (is.null(g) || g == "") {
       return(wellPanel(
-        p(strong("Select a gene"), " from ", strong("Summarize all associations for a single gene"), " in the sidebar to view a comprehensive summary of all associations for that gene, including:"),
-        tags$ul(
-          tags$li("Oncoprint of co-mutations in samples with the gene mutated"),
-          tags$li("Co-mutation heatmap (this gene vs others)"),
-          tags$li("Mutation distribution"),
-          tags$li("Kaplan-Meier survival (single gene)"),
-          tags$li("Pairwise and triple co-mutation survival plots"),
-          tags$li("Clinical associations"),
-          tags$li("VAF distribution and VAF vs survival (MaxStat)"),
-          tags$li("Drug sensitivity associations")
-        )
+        p(strong("Select a gene"), " from ", strong("Summarize all associations for a single gene"), " in the sidebar to view a comprehensive summary of all associations for that gene.")
       ))
     }
-    df <- filtered_data()
-    genes_other <- setdiff(sort(unique(as.character(df$Gene_for_analysis))), g)
     tagList(
       wellPanel(
         h3("All associations for: ", g),
         uiOutput("gene_ncbi_summary"),
         uiOutput("gene_civic_summary")
       ),
-      wellPanel(h4("Clinical associations"), plotOutput("gene_summary_clinical_plot", height = 260)),
-      fluidRow(
-        column(9, wellPanel(h4("Oncoprint: Co-mutations in samples with this gene mutated"), plotOutput("gene_summary_oncoprint", height = 480))),
-        column(3, wellPanel(h4("Co-mutation Odds Ratio"), plotOutput("gene_summary_comut_heatmap", height = 480)))
+      tabsetPanel(
+        id = "gene_summary_sub_tabs",
+        type = "tabs",
+        selected = if (is.null(selected_gene_summary_sub_tab()) || !selected_gene_summary_sub_tab() %in% c("clinical", "comut", "vaf", "drug")) "clinical" else selected_gene_summary_sub_tab(),
+        tabPanel("Clinical", value = "clinical"),
+        tabPanel("Co-mutation", value = "comut"),
+        tabPanel("VAF", value = "vaf"),
+        tabPanel("Drug Sensitivity", value = "drug")
       ),
-      fluidRow(
-        column(6, wellPanel(h4("Mutation distribution"), plotOutput("gene_summary_lollipop_plot", height = 380))),
-        column(6, wellPanel(h4("Kaplan-Meier: Single gene"), plotOutput("gene_summary_survival", height = 480)))
+      uiOutput("gene_summary_sub_content")
+    )
+  })
+
+  # Only render the active sub-tab's content so only those outputs exist (reduces memory)
+  output$gene_summary_sub_content <- renderUI({
+    if (!input$main_nav %in% c("analyses", "meta_aml4")) return(NULL)
+    g <- input$gene_summary
+    sub <- input$gene_summary_sub_tabs
+    if (is.null(sub) || !sub %in% c("clinical", "comut", "vaf", "drug")) sub <- "clinical"
+    if (is.null(g) || g == "") return(NULL)
+    df <- filtered_data()
+    genes_other <- setdiff(sort(unique(as.character(df$Gene_for_analysis))), g)
+    switch(sub,
+      clinical = tagList(
+        wellPanel(h4("Clinical associations"), plotOutput("gene_summary_clinical_plot", height = 260)),
+        fluidRow(
+          column(6, wellPanel(h4("Mutation distribution"), plotOutput("gene_summary_lollipop_plot", height = 380))),
+          column(6, wellPanel(h4("Kaplan-Meier: Single gene"), plotOutput("gene_summary_survival", height = 480)))
+        )
       ),
-      fluidRow(
-        column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Pairwise co-mutation survival"), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
-        column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Triple co-mutation survival"), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
+      comut = tagList(
+        fluidRow(
+          column(9, wellPanel(h4("Oncoprint: Co-mutations in samples with this gene mutated"), plotOutput("gene_summary_oncoprint", height = 480))),
+          column(3, wellPanel(h4("Co-mutation Odds Ratio"), plotOutput("gene_summary_comut_heatmap", height = 480)))
+        ),
+        fluidRow(
+          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Pairwise co-mutation survival"), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
+          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Triple co-mutation survival"), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
+        )
       ),
-      br(),
-      fluidRow(
+      vaf = fluidRow(
         column(6, wellPanel(h4("VAF distribution"), plotOutput("gene_summary_vaf_plot", height = 350))),
         column(6, wellPanel(h4("VAF and survival (MaxStat)"), plotOutput("gene_summary_vaf_survival_plot", height = 350)))
       ),
-      wellPanel(
+      drug = wellPanel(
         style = "background-color: #e9ecef;",
         h4("Drug sensitivity (Beat AML)"),
         fluidRow(
@@ -2617,7 +2698,8 @@ server <- function(input, output, session) {
           column(6, wellPanel(h5("VAF–AUC correlations (this gene)"), div(style = "height: 300px; overflow-y: auto;", DTOutput("gene_summary_drug_table")))),
           column(6, wellPanel(h5("LOOCV RMSE heatmap (ordered by RMSE)"), plotOutput("gene_summary_drug_loo_heatmap", height = 350)))
         )
-      )
+      ),
+      NULL
     )
   })
 
@@ -3204,14 +3286,15 @@ server <- function(input, output, session) {
   })
 
   output$gene_summary_drug_table <- renderDT({
+    empty_drug <- datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 10))
     g <- input$gene_summary
-    if (is.null(g) || g == "") return(NULL)
+    if (is.null(g) || g == "") return(empty_drug)
     corr <- gene_summary_drug_correlations()
-    if (is.null(corr) || nrow(corr) == 0) return(NULL)
+    if (is.null(corr) || nrow(corr) == 0) return(empty_drug)
     if ("n" %in% colnames(corr)) corr <- corr[!is.na(corr$n) & corr$n >= 10, , drop = FALSE]
     base_genes <- gene_to_beataml_bases(g)
     sub <- corr[corr$Gene %in% base_genes, , drop = FALSE]
-    if (nrow(sub) == 0) return(NULL)
+    if (nrow(sub) == 0) return(empty_drug)
     cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "n", "VAF_range", "AUC_range")
     cols <- cols[cols %in% colnames(sub)]
     df <- sub[order(sub$p_value), cols, drop = FALSE]
