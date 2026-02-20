@@ -512,8 +512,8 @@ ui <- fluidPage(
       gtag('config', 'G-BHRQ6LT7GG');
     "))
   ),
-  div(id = "data-loading-overlay", style = "display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.95); z-index: 9999; align-items: center; justify-content: center;",
-    tags$div(style = "position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: 2em;",
+  div(id = "data-loading-overlay", style = "display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.15); z-index: 9999; align-items: center; justify-content: center;",
+    tags$div(style = "background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.15); padding: 28px 36px; text-align: center; min-width: 260px; max-width: 320px;",
       div(class = "loading-spinner"),
       tags$div(style = "font-size: 18px; color: #374e55; margin-bottom: 8px; font-weight: 600;", "Loading data..."),
       tags$p(style = "color: #666; font-size: 14px; margin: 0;", "Preparing analyses. This may take a moment.")
@@ -522,87 +522,132 @@ ui <- fluidPage(
   tags$script(HTML("
     (function() {
       var overlayShownAt = 0;
-      var minOverlayMs = 2500;
+      var minOverlayMs = 1500;
       var currentTab = null;
-      var tabLoaded = {analyses: false, meta_aml4: false};
+      var tabLoaded = {};
+      var renderedOutputs = {};
       var hideTimeout = null;
+      var delayedShowTimeout = null;
+      var overlayVisible = false;
+      var subTabOutputCount = 0;
+      var subTabMaxWait = null;
+      var mainTabs = ['analyses', 'meta_aml4'];
+      var LOADING_DELAY_MS = 2000;
       
       function showOverlay() {
+        overlayVisible = true;
         overlayShownAt = Date.now();
+        subTabOutputCount = 0;
         if (hideTimeout) {
           clearTimeout(hideTimeout);
           hideTimeout = null;
+        }
+        if (subTabMaxWait) {
+          clearTimeout(subTabMaxWait);
+          subTabMaxWait = null;
         }
         $('#data-loading-overlay').css({'display': 'flex'});
       }
       
       function hideOverlay() {
+        overlayVisible = false;
         var elapsed = Date.now() - overlayShownAt;
         var wait = Math.max(0, minOverlayMs - elapsed);
+        if (currentTab) tabLoaded[currentTab] = true;
         hideTimeout = setTimeout(function() { 
           $('#data-loading-overlay').hide(); 
           hideTimeout = null;
         }, wait);
       }
       
-      // Show overlay immediately when clicking analysis tabs (only if not already loaded)
-      $(document).on('click', 'a[data-value=\"analyses\"]', function() { 
-        currentTab = 'analyses';
-        if (!tabLoaded.analyses) {
-          showOverlay();
-        }
-      });
-      $(document).on('click', 'a[data-value=\"meta_aml4\"]', function() { 
-        currentTab = 'meta_aml4';
-        if (!tabLoaded.meta_aml4) {
-          showOverlay();
-        }
-      });
-      
-      // Track which key outputs have rendered
-      var renderedOutputs = {};
-      
-      // Hide overlay only when data is ready AND key outputs have rendered
-      Shiny.addCustomMessageHandler('dataReady', function(tab) { 
-        if (tab === currentTab) {
-          tabLoaded[tab] = true;
-          // Don't hide yet - wait for outputs to render
-        }
-      });
-      
-      // Track tab changes
-      $(document).on('shiny:inputchanged', function(event) {
-        if (event.name === 'main_nav') {
-          currentTab = event.value;
-          renderedOutputs = {}; // Reset when switching tabs
-          if ((currentTab === 'analyses' || currentTab === 'meta_aml4') && !tabLoaded[currentTab]) {
+      function scheduleOverlay() {
+        if (delayedShowTimeout) clearTimeout(delayedShowTimeout);
+        delayedShowTimeout = setTimeout(function() {
+          delayedShowTimeout = null;
+          if (currentTab && (tabLoaded[currentTab] === undefined || tabLoaded[currentTab] === false)) {
             showOverlay();
+          }
+        }, LOADING_DELAY_MS);
+      }
+      
+      function onLoadingComplete() {
+        if (delayedShowTimeout) {
+          clearTimeout(delayedShowTimeout);
+          delayedShowTimeout = null;
+        }
+        if (currentTab) tabLoaded[currentTab] = true;
+        if (overlayVisible) hideOverlay();
+      }
+      
+      $(document).on('click', '[data-value]', function() {
+        var val = $(this).attr('data-value');
+        if (val && val !== 'about' && (tabLoaded[val] === undefined || tabLoaded[val] === false)) {
+          currentTab = val;
+          renderedOutputs = {};
+          scheduleOverlay();
+          if (mainTabs.indexOf(val) === -1) {
+            subTabMaxWait = setTimeout(function() {
+              if (currentTab === val) {
+                subTabMaxWait = null;
+                onLoadingComplete();
+              }
+            }, 6000);
           }
         }
       });
       
-      // Check when outputs finish rendering - hide overlay only after key outputs are ready
+      Shiny.addCustomMessageHandler('dataReady', function(tab) { 
+        if (tab === currentTab) {
+          tabLoaded[tab] = true;
+        }
+      });
+      
+      $(document).on('shiny:inputchanged', function(event) {
+        if (event.name === 'main_nav') {
+          currentTab = event.value;
+          renderedOutputs = {};
+          subTabOutputCount = 0;
+          if (subTabMaxWait) {
+            clearTimeout(subTabMaxWait);
+            subTabMaxWait = null;
+          }
+          if (mainTabs.indexOf(currentTab) !== -1 && !tabLoaded[currentTab]) {
+            scheduleOverlay();
+          }
+        }
+      });
+      
       $(document).on('shiny:value', function(event) {
-        if (currentTab && (currentTab === 'analyses' || currentTab === 'meta_aml4')) {
-          // Track key outputs that indicate the tab is fully loaded
-          var keyOutputs = ['summary_table', 'cohort_plot', 'oncoprint_plot'];
+        if (!currentTab || currentTab === 'about') return;
+        if (mainTabs.indexOf(currentTab) !== -1) {
+          var keyOutputs = ['summary_table', 'cohort_plot'];
           if (keyOutputs.indexOf(event.name) !== -1) {
             renderedOutputs[event.name] = true;
-            
-            // Check if all key outputs have rendered and data is ready
             var allRendered = keyOutputs.every(function(output) {
               return renderedOutputs[output] === true;
             });
-            
             if (allRendered && tabLoaded[currentTab]) {
-              // All outputs rendered and data ready - wait a bit more then hide
               var tabToCheck = currentTab;
               setTimeout(function() {
                 if (currentTab === tabToCheck) {
-                  hideOverlay();
+                  onLoadingComplete();
                 }
-              }, 500);
+              }, 400);
             }
+          }
+        } else {
+          subTabOutputCount++;
+          if (subTabOutputCount >= 2) {
+            if (subTabMaxWait) {
+              clearTimeout(subTabMaxWait);
+              subTabMaxWait = null;
+            }
+            var tabToCheck = currentTab;
+            setTimeout(function() {
+              if (currentTab === tabToCheck) {
+                onLoadingComplete();
+              }
+            }, 400);
           }
         }
       });
@@ -629,7 +674,7 @@ ui <- fluidPage(
           tags$li("Drug Sensitivity (Mutation and VAF associations for BeatAML2 data)")
         ),
         h2("Meta AML4 tab"),
-        p("Meta AML4 merges ", strong("four of the largest molecularly profiled and clinically annotated AML datasets"), " into a single combined cohort of ", strong("~4,660 patients"), ". Meta AML4 also includes ", strong("refined mutation assignments"), " (e.g., IDH2 R140 vs R172, NRAS G12/13 vs Q61/62, CEBPA bi-allelic vs mono-allelic) for more granular associations."),
+        p("Meta AML4 merges ", strong("four of the largest molecularly profiled and clinically annotated AML datasets"), " into a single combined cohort of ", strong("~4,660 patients"), "."),
         div(style = "background: #f8f9fa; border-left: 4px solid #0066cc; padding: 14px 18px; margin: 12px 0; border-radius: 0 6px 6px 0;",
           p(strong("Datasets:"), style = "margin-top: 0; margin-bottom: 8px;"),
           p(style = "margin: 4px 0; line-height: 1.6;", strong("UK-NCRI"), " (2,113 patients) | ", tags$a("Tazi et al. (2022) (Nature Communications)", href = "https://www.nature.com/articles/s41467-022-32103-8", target = "_blank"), " | ", tags$a("Data", href = "https://github.com/papaemmelab/Tazi_NatureC_AML", target = "_blank")),
@@ -770,37 +815,38 @@ server <- function(input, output, session) {
         selected = current_tab,
         tabPanel("Overview",
           fluidRow(
-            column(4, wellPanel(h4("Selected Cohort Summary"), tableOutput("summary_table"))),
+            column(4, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
             column(8, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
-          ),
-          fluidRow(
-            column(12, wellPanel(
-              h4("OncoPrint: Mutations & Clinical Annotations"),
-              plotOutput("oncoprint_plot", height = 500)
-            ))
           )
         ),
         tabPanel("All Gene Associations",
           tabsetPanel(
             id = "meta4_all_gene_tabs",
             selected = inner_tab,
-            tabPanel("Single",
+            tabPanel("Single mutation", value = "Single",
               fluidRow(
                 column(12, wellPanel(
-                  h4("Clinical Variable by Mutation"),
+                  h4("Clinical Variable by Mutation Status"),
                   selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
+                  p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. Significance: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
                   plotOutput("clinical_plot", height = 400)))
               ),
               fluidRow(
-                column(6, wellPanel(h4("Kaplan-Meier"), selectInput("surv_gene", "Gene:", choices = gene_choices), plotOutput("survival_plot", height = 500))),
-                column(6, wellPanel(h4("Hazard Ratios"), plotOutput("forest_plot", height = 500)))
+                column(6, wellPanel(style = "min-height: 560px;", h4("Hazard Ratios"), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+                column(6, wellPanel(style = "min-height: 560px;", h4("Kaplan-Meier"), selectInput("surv_gene", "Gene:", choices = gene_choices), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
               ),
               fluidRow(column(12, wellPanel(h4("Survival Summary"), DTOutput("survival_table"))))
             ),
             tabPanel("Co-mutation",
               fluidRow(
-                column(6, wellPanel(h4("Co-mutation Odds Ratio"), plotOutput("cooccurrence_plot", height = 500))),
-                column(6, wellPanel(h4("Top Co-occurring Pairs"), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+                column(12, wellPanel(
+                  h4("OncoPrint: Mutations & Clinical Annotations"),
+                  plotOutput("oncoprint_plot", height = 500)
+                ))
+              ),
+              fluidRow(
+                column(6, wellPanel(h4("Co-mutation Odds Ratio"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+                column(6, wellPanel(h4("Top Co-occurring Pairs"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
               ),
               fluidRow(
                 column(4, wellPanel(
@@ -853,23 +899,26 @@ server <- function(input, output, session) {
               ),
               fluidRow(
                 column(12, wellPanel(
-                  h4("Mut vs WT AUC (≥5 mut samples)"),
+                  fluidRow(column(8, h4("Mut vs WT AUC (≥5 mut samples)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_heatmap", "Download plot")))),
                   uiOutput("drug_mut_wt_summary_ui"),
+                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
                   p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
                   div(style = "margin: 0; padding: 0; line-height: 0;", plotOutput("drug_mut_wt_heatmap", height = 400))
                 ))
               ),
               fluidRow(
                 column(12, wellPanel(
-                  h4("VAF vs AUC correlations"),
+                  fluidRow(column(8, h4("VAF vs AUC correlations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_summary_dotplot", "Download plot")))),
                   uiOutput("drug_vaf_auc_summary_ui"),
+                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF → lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF → higher AUC). * = q < 0.1 (FDR)."),
                   plotOutput("drug_summary_dotplot", height = 500),
                   p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
                 ))
               ),
               fluidRow(
                 column(6, wellPanel(
-                  h4("Individual Mutation and VAF Associations"),
+                  fluidRow(column(8, h4("Individual Mutation and VAF Associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_scatter_plot", "Download plot")))),
+                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF–AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
                   p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
                   uiOutput("drug_scatter_selects_ui"),
                   fluidRow(
@@ -878,13 +927,13 @@ server <- function(input, output, session) {
                   )
                 )),
                 column(6, wellPanel(
-                  h4("Leave-One-Out Cross Validation for VAF vs AUC analysis"),
-                  p(em("RMSE = leave-one-out prediction error in AUC units.")),
+                  fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
+                  p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF–AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
                   plotOutput("drug_loo_heatmap", height = 350)))
               ),
               fluidRow(
-                column(6, wellPanel(h4("Mut vs WT Statistics"), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
-                column(6, wellPanel(h4("VAF vs AUC Statistics"), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
+                column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+                column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
               )
             )
           )
@@ -909,7 +958,7 @@ server <- function(input, output, session) {
         selected = current_analyses_tab,
         tabPanel("Overview",
           fluidRow(
-            column(4, wellPanel(h4("Selected Cohort Summary"), tableOutput("summary_table"))),
+            column(4, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
             column(8, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
           ),
           fluidRow(
@@ -922,20 +971,27 @@ server <- function(input, output, session) {
         tabPanel("Single mutation associations",
           fluidRow(
             column(12, wellPanel(
-              h4("Clinical Variable by Mutation"),
+              h4("Clinical Variable by Mutation Status"),
               selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
+              p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
               plotOutput("clinical_plot", height = 400)))
           ),
           fluidRow(
-            column(6, wellPanel(h4("Kaplan-Meier"), selectInput("surv_gene", "Gene:", choices = gene_choices_analyses), plotOutput("survival_plot", height = 500))),
-            column(6, wellPanel(h4("Hazard Ratios"), plotOutput("forest_plot", height = 500)))
+            column(6, wellPanel(style = "min-height: 560px;", h4("Hazard Ratios"), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+            column(6, wellPanel(style = "min-height: 560px;", h4("Kaplan-Meier"), selectInput("surv_gene", "Gene:", choices = gene_choices_analyses), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
           ),
-          fluidRow(column(12, wellPanel(h4("Survival Summary"), DTOutput("survival_table"))))
+          fluidRow(column(12, wellPanel(h4("Survival Summary"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Hazard ratios (HR) and 95% CI from Cox model. HR > 1 = higher risk in mutated / high-VAF group."), DTOutput("survival_table"))))
         ),
         tabPanel("Co-mutation Associations",
           fluidRow(
-            column(6, wellPanel(h4("Co-mutation Odds Ratio"), plotOutput("cooccurrence_plot", height = 500))),
-            column(6, wellPanel(h4("Top Co-occurring Pairs"), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+            column(12, wellPanel(
+              h4("OncoPrint: Mutations & Clinical Annotations"),
+              plotOutput("oncoprint_plot", height = 500)
+            ))
+          ),
+          fluidRow(
+            column(6, wellPanel(h4("Co-mutation Odds Ratio"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+            column(6, wellPanel(h4("Top Co-occurring Pairs"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
           ),
           fluidRow(
             column(4, wellPanel(
@@ -988,23 +1044,26 @@ server <- function(input, output, session) {
           ),
           fluidRow(
             column(12, wellPanel(
-              h4("Mut vs WT AUC (≥5 mut samples)"),
+              fluidRow(column(8, h4("Mut vs WT AUC (≥5 mut samples)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_heatmap", "Download plot")))),
               uiOutput("drug_mut_wt_summary_ui"),
+              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
               p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
               div(style = "margin: 0; padding: 0; line-height: 0;", plotOutput("drug_mut_wt_heatmap", height = 500))
             ))
           ),
           fluidRow(
             column(12, wellPanel(
-              h4("VAF vs AUC correlations"),
+              fluidRow(column(8, h4("VAF vs AUC correlations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_summary_dotplot", "Download plot")))),
               uiOutput("drug_vaf_auc_summary_ui"),
+              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF → lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF → higher AUC). * = q < 0.1 (FDR)."),
               plotOutput("drug_summary_dotplot", height = 500),
               p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
             ))
           ),
           fluidRow(
             column(6, wellPanel(
-              h4("Individual Mutation and VAF Associations"),
+              fluidRow(column(8, h4("Individual Mutation and VAF Associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_scatter_plot", "Download plot")))),
+              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF–AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
               p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
               uiOutput("drug_scatter_selects_ui"),
               fluidRow(
@@ -1013,13 +1072,13 @@ server <- function(input, output, session) {
               )
             )),
             column(6, wellPanel(
-              h4("Leave-One-Out Cross Validation for VAF vs AUC analysis"),
-              p(em("RMSE = leave-one-out prediction error in AUC units.")),
+              fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
+              p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF–AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
               plotOutput("drug_loo_heatmap", height = 350)))
           ),
           fluidRow(
-            column(6, wellPanel(h4("Mut vs WT Statistics"), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
-            column(6, wellPanel(h4("VAF vs AUC Statistics"), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
+            column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+            column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
           )
         )
         # Data Table tab hidden for now; re-add tabPanel("Data Table", ...) here to restore
@@ -1844,11 +1903,13 @@ server <- function(input, output, session) {
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     df <- df[order(df$HR), , drop = FALSE]
     df$Gene <- factor(df$Gene, levels = df$Gene)
-    ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = HR > 1)) +
+    df$ColorGroup <- ifelse(df$p >= 0.05, "Not significant",
+      ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
+    ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
       geom_pointrange(size = 0.5) +
       geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
       coord_flip() +
-      scale_color_manual(values = c("TRUE" = "#762a83", "FALSE" = "#1b7837"), guide = "none") +
+      scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
       labs(x = NULL, y = "Hazard Ratio") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15))
@@ -2871,6 +2932,123 @@ server <- function(input, output, session) {
     p
   })
 
+  output$download_drug_mut_wt_heatmap <- downloadHandler(
+    filename = function() paste0("drug_mut_wt_heatmap_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      mut_wt <- drug_mut_wt_all()
+      if (is.null(mut_wt) || nrow(mut_wt) == 0) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(); ggsave(file, plot = p, width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      if ("q_value" %in% colnames(mut_wt)) mut_wt <- mut_wt[!is.na(mut_wt$q_value) & mut_wt$q_value < 0.1, , drop = FALSE]
+      else mut_wt <- mut_wt[!is.na(mut_wt$p_value) & mut_wt$p_value < 0.05, , drop = FALSE]
+      if (nrow(mut_wt) == 0) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No pairs with q < 0.1") + theme_void(); ggsave(file, plot = p, width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      gene_meds <- aggregate(delta_AUC_mut_wt ~ Gene, data = mut_wt, FUN = median, na.rm = TRUE)
+      mut_wt$Gene <- factor(mut_wt$Gene, levels = rev(gene_meds$Gene[order(gene_meds$delta_AUC_mut_wt)]))
+      inh_meds <- aggregate(delta_AUC_mut_wt ~ Inhibitor, data = mut_wt, FUN = median, na.rm = TRUE)
+      mut_wt$Inhibitor <- factor(mut_wt$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$delta_AUC_mut_wt)])
+      n_genes <- length(unique(mut_wt$Gene)); n_inhibitors <- length(unique(mut_wt$Inhibitor))
+      aspect_ratio <- n_genes / n_inhibitors
+      rng <- range(mut_wt$delta_AUC_mut_wt, na.rm = TRUE)
+      p <- ggplot(mut_wt, aes(x = Inhibitor, y = Gene, fill = delta_AUC_mut_wt)) +
+        geom_tile(color = "white", linewidth = 0.3) +
+        scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0, name = "Delta AUC") +
+        labs(x = "Inhibitor", y = NULL) + theme_minimal(base_size = 18) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 12), axis.text.y = element_text(size = 14), aspect.ratio = aspect_ratio, plot.margin = margin(0, 0, 0, 0))
+      ggsave(file, plot = p, width = max(8, n_inhibitors * 0.4), height = max(6, n_genes * 0.35), dpi = 300)
+    }
+  )
+
+  output$download_drug_summary_dotplot <- downloadHandler(
+    filename = function() paste0("drug_vaf_auc_dotplot_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      corr <- drug_correlations()
+      if (is.null(corr) || nrow(corr) == 0) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(); ggsave(file, plot = p, width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      plot_df <- corr[corr$R_squared >= 0.25 & corr$VAF_range >= 25 & corr$AUC_range >= 75, , drop = FALSE]
+      if (nrow(plot_df) == 0) { plot_df <- corr[corr$p_value < 0.05, , drop = FALSE]; if (nrow(plot_df) == 0) plot_df <- head(corr[order(-corr$R_squared), ], 30) }
+      if (nrow(plot_df) == 0) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No correlations") + theme_void(); ggsave(file, plot = p, width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      plot_df$star <- ifelse(plot_df$q_value < 0.1, "*", "")
+      gene_meds <- aggregate(delta_AUC ~ Gene, data = plot_df, FUN = median)
+      plot_df$Gene <- factor(plot_df$Gene, levels = rev(gene_meds$Gene[order(gene_meds$delta_AUC)]))
+      inh_meds <- aggregate(delta_AUC ~ Inhibitor, data = plot_df, FUN = median)
+      plot_df$Inhibitor <- factor(plot_df$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$delta_AUC)])
+      p <- ggplot(plot_df, aes(x = Inhibitor, y = Gene, fill = delta_AUC, size = VAF_range, label = star)) +
+        geom_point(shape = 21, color = "black", stroke = 0.5) + geom_text(size = 5, color = "#525252", hjust = -0.2, vjust = 0.5, show.legend = FALSE) +
+        scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0, name = "Delta AUC") + scale_size_continuous(name = "Delta VAF", range = c(2, 8)) +
+        labs(x = "Inhibitor", y = NULL) + theme_minimal(base_size = 16) + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.text = element_text(size = 14), legend.position = "right")
+      ggsave(file, plot = p, width = 12, height = max(6, length(unique(plot_df$Gene)) * 0.3), dpi = 300)
+    }
+  )
+
+  output$download_drug_scatter_plot <- downloadHandler(
+    filename = function() paste0("drug_scatter_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      d <- drug_scatter_shared()
+      if (is.null(d)) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select Gene and Inhibitor") + theme_void(); ggsave(file, plot = p, width = 6, height = 4, dpi = 150); return(invisible(NULL)) }
+      merged <- d$merged
+      if (nrow(merged) < 5) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient samples") + theme_minimal(); ggsave(file, plot = p, width = 6, height = 4, dpi = 150); return(invisible(NULL)) }
+      gene <- input$drug_gene; drug <- input$drug_inhibitor
+      line_col <- if (cor(merged$VAF, merged$auc, use = "pairwise.complete.obs") > 0) "#2166ac" else "#b2182b"
+      fit <- lm(auc ~ VAF, data = merged)
+      r2 <- round(summary(fit)$r.squared, 3); pv <- summary(fit)$coefficients[2, 4]
+      ptxt <- if (pv < 0.001) "p < 0.001" else paste0("p = ", format.pval(pv, digits = 2))
+      p <- ggplot(merged, aes(x = VAF, y = auc)) + geom_point(size = 3, alpha = 0.8, color = line_col) + geom_smooth(method = "lm", se = TRUE, color = line_col, fill = line_col, alpha = 0.2) + coord_cartesian(ylim = d$y_lim) + labs(title = paste0(drug, " vs ", gene, " VAF"), x = "VAF (%)", y = "Drug AUC", subtitle = paste0("R² = ", r2, ", ", ptxt)) + theme_minimal(base_size = 14)
+      ggsave(file, plot = p, width = 6, height = 5, dpi = 300)
+    }
+  )
+
+  output$download_drug_loo_heatmap <- downloadHandler(
+    filename = function() paste0("drug_loo_rmse_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      loo <- drug_loo()
+      if (is.null(loo) || nrow(loo) == 0) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(); ggsave(file, plot = p, width = 6, height = 4, dpi = 150); return(invisible(NULL)) }
+      loo <- loo[!is.na(loo$RMSE), , drop = FALSE]
+      if (nrow(loo) == 0) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No RMSE values") + theme_void(); ggsave(file, plot = p, width = 6, height = 4, dpi = 150); return(invisible(NULL)) }
+      gene_meds <- aggregate(RMSE ~ Gene, data = loo, FUN = median)
+      loo$Gene <- factor(loo$Gene, levels = rev(gene_meds$Gene[order(gene_meds$RMSE)]))
+      inh_meds <- aggregate(RMSE ~ Inhibitor, data = loo, FUN = median)
+      loo$Inhibitor <- factor(loo$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$RMSE)])
+      p <- ggplot(loo, aes(x = Inhibitor, y = Gene, fill = RMSE)) + geom_tile(color = "white", linewidth = 0.3) + scale_fill_viridis_c(option = "viridis", name = "RMSE") + labs(x = "Inhibitor", y = "Gene") + theme_minimal(base_size = 14) + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+      ggsave(file, plot = p, width = max(8, length(unique(loo$Inhibitor)) * 0.35), height = max(5, length(unique(loo$Gene)) * 0.3), dpi = 300)
+    }
+  )
+
+  output$download_drug_mut_wt_table <- downloadHandler(
+    filename = function() paste0("drug_mut_wt_table_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
+    content = function(file) {
+      b <- beataml_for_drug()
+      if (is.null(b) || !b$ok) return(write("No Beat AML data", file))
+      mut_wt <- drug_mut_wt_all()
+      if (is.null(mut_wt) || nrow(mut_wt) == 0) return(write("No data", file))
+      if ("q_value" %in% colnames(mut_wt)) mut_wt <- mut_wt[!is.na(mut_wt$q_value) & mut_wt$q_value < 0.1, , drop = FALSE]
+      else mut_wt <- mut_wt[!is.na(mut_wt$p_value) & mut_wt$p_value < 0.05, , drop = FALSE]
+      if (nrow(mut_wt) == 0) return(write("No pairs with q < 0.1", file))
+      subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
+      allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
+      auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
+      mut_wide <- b$mutations[b$mutations$Sample %in% allowed, , drop = FALSE]
+      mean_mut_auc <- numeric(nrow(mut_wt)); mean_wt_auc <- numeric(nrow(mut_wt))
+      for (i in seq_len(nrow(mut_wt))) {
+        g <- mut_wt$Gene[i]; inh <- mut_wt$Inhibitor[i]
+        mut_samples <- unique(mut_wide$Sample[mut_wide$Gene == g])
+        sub_auc <- auc_wide[auc_wide$inhibitor == inh, c("Sample", "auc"), drop = FALSE]
+        mean_mut_auc[i] <- mean(sub_auc$auc[sub_auc$Sample %in% mut_samples], na.rm = TRUE)
+        mean_wt_auc[i] <- mean(sub_auc$auc[!sub_auc$Sample %in% mut_samples], na.rm = TRUE)
+      }
+      resistance_trend <- ifelse(mut_wt$delta_AUC_mut_wt > 0, "Resistant", ifelse(mut_wt$delta_AUC_mut_wt < 0, "Sensitive", "Neutral"))
+      out <- data.frame(Inhibitor = mut_wt$Inhibitor, Gene = mut_wt$Gene, n_mut = as.integer(mut_wt$n_mut), n_WT = as.integer(mut_wt$n_wt), Mean_Mut_AUC = round(mean_mut_auc, 2), Mean_WT_AUC = round(mean_wt_auc, 2), Delta_AUC = round(mut_wt$delta_AUC_mut_wt, 3), p_value = mut_wt$p_value, q_value = if ("q_value" %in% colnames(mut_wt)) mut_wt$q_value else NA, Resistance_Trend = resistance_trend, stringsAsFactors = FALSE)
+      write.csv(out, file, row.names = FALSE)
+    }
+  )
+
+  output$download_drug_correlation_table <- downloadHandler(
+    filename = function() paste0("drug_vaf_auc_correlations_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
+    content = function(file) {
+      corr <- drug_correlations()
+      if (is.null(corr) || nrow(corr) == 0) return(write("No data", file))
+      cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "n")
+      cols <- cols[cols %in% colnames(corr)]
+      write.csv(corr[, cols, drop = FALSE], file, row.names = FALSE)
+    }
+  )
+
   # ---- All Gene Associations tab: comprehensive summary for a single gene ----
   gene_summary_data <- reactive({
     g <- input$gene_summary
@@ -3055,36 +3233,69 @@ server <- function(input, output, session) {
     genes_other <- setdiff(sort(unique(as.character(df$Gene_for_analysis))), g)
     switch(sub,
       clinical = tagList(
-        wellPanel(h4("Clinical associations"), plotOutput("gene_summary_clinical_plot", height = 260)),
+        wellPanel(
+          fluidRow(column(8, h4("Clinical associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_clinical_plot", "Download plot")))),
+          p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
+          plotOutput("gene_summary_clinical_plot", height = 260)),
         fluidRow(
-          column(6, wellPanel(h4("Mutation distribution"), plotOutput("gene_summary_lollipop_plot", height = 380))),
-          column(6, wellPanel(h4("Kaplan-Meier: Single gene"), plotOutput("gene_summary_survival", height = 480)))
+          column(6, wellPanel(
+            fluidRow(column(8, h4("Mutation distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_lollipop_plot", "Download plot")))),
+            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Protein positions with mutations; height = count of mutations at that position."),
+            plotOutput("gene_summary_lollipop_plot", height = 380))),
+          column(6, wellPanel(
+            fluidRow(column(8, h4("Kaplan-Meier: Single gene")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_survival", "Download plot")))),
+            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT."),
+            plotOutput("gene_summary_survival", height = 480)))
         )
       ),
       comut = tagList(
         fluidRow(
-          column(9, wellPanel(h4("Oncoprint: Co-mutations in samples with this gene mutated"), plotOutput("gene_summary_oncoprint", height = 480))),
-          column(3, wellPanel(h4("Odds Ratio Statistics"), p(em("Calculated from all samples in the filtered subset, not just those with the gene mutated."), style = "font-size: 11px; color: #666; margin-bottom: 8px;"), plotOutput("gene_summary_comut_heatmap", height = 480)))
+          column(9, wellPanel(
+            fluidRow(column(8, h4("Oncoprint: Co-mutations in samples with this gene mutated")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_oncoprint", "Download plot")))),
+            plotOutput("gene_summary_oncoprint", height = 480))),
+          column(3, wellPanel(
+            fluidRow(column(8, h4("Odds Ratio Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut_heatmap", "Download plot")))),
+            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = log2(OR) < 0 (mutually exclusive); ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = log2(OR) > 0 (co-occurring)."),
+            p(em("Calculated from all samples in the filtered subset, not just those with the gene mutated."), style = "font-size: 11px; color: #666; margin-bottom: 8px;"),
+            plotOutput("gene_summary_comut_heatmap", height = 480)))
         ),
         fluidRow(
-          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Pairwise co-mutation survival"), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
-          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", h4("Triple co-mutation survival"), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
+          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", fluidRow(column(8, h4("Pairwise co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut2_plot", "Download plot")))), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
+          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", fluidRow(column(8, h4("Triple co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut3_plot", "Download plot")))), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
         )
       ),
       vaf = fluidRow(
-        column(6, wellPanel(h4("VAF distribution"), plotOutput("gene_summary_vaf_plot", height = 350))),
-        column(6, wellPanel(h4("VAF and survival (MaxStat)"), plotOutput("gene_summary_vaf_survival_plot", height = 350)))
+        column(6, wellPanel(
+          fluidRow(column(8, h4("VAF distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_plot", "Download plot")))),
+          p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Variant allele frequency (%) per mutation; one bar per mutation."),
+          plotOutput("gene_summary_vaf_plot", height = 350))),
+        column(6, wellPanel(
+          fluidRow(column(8, h4("VAF and survival (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_survival_plot", "Download plot")))),
+          p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = high VAF; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = low VAF (MaxStat optimal cutpoint)."),
+          plotOutput("gene_summary_vaf_survival_plot", height = 350)))
       ),
       drug = wellPanel(
         style = "background-color: #e9ecef;",
         h4("Drug sensitivity (Beat AML)"),
+        p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = sensitive (mut lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = resistant (mut higher AUC). Statistics summaries below."),
         fluidRow(
-          column(6, wellPanel(h5("Mut vs WT Inhibitor Sensitivity"), plotOutput("gene_summary_drug_volcano", height = 400))),
-          column(6, wellPanel(h5("Mutation VAF vs Inhibitor Sensitivity"), plotOutput("gene_summary_drug_dotplot", height = 400)))
+          column(6, wellPanel(
+            fluidRow(column(8, h5("Mut vs WT Inhibitor Sensitivity")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_volcano", "Download plot")))),
+            p(style = "font-size: 10px; color: #666; margin-bottom: 4px;", "Volcano: points above dashed line = p < 0.05. Left = sensitive; right = resistant."),
+            plotOutput("gene_summary_drug_volcano", height = 400))),
+          column(6, wellPanel(
+            fluidRow(column(8, h5("Mutation VAF vs Inhibitor Sensitivity")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_dotplot", "Download plot")))),
+            p(style = "font-size: 10px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative VAF–AUC; ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive. One facet per inhibitor (p < 0.05)."),
+            plotOutput("gene_summary_drug_dotplot", height = 400)))
         ),
         fluidRow(
-          column(6, wellPanel(h5("Mut vs WT Results Summary"), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). All gene–inhibitor pairs with ≥5 mut samples (filtered subset)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_mut_wt_table")))),
-          column(6, wellPanel(h5("VAF–AUC correlations Summary"), div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_table"))))
+          column(6, wellPanel(
+            fluidRow(column(8, h5("Mut vs WT Results Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_mut_wt_table", "Download table")))),
+            p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). All gene–inhibitor pairs with ≥5 mut samples (filtered subset)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
+            div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_mut_wt_table")))),
+          column(6, wellPanel(
+            fluidRow(column(8, h5("VAF–AUC correlations Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_table", "Download table")))),
+            div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_table"))))
         )
       ),
       NULL
@@ -3730,6 +3941,271 @@ server <- function(input, output, session) {
     gc()
     p
   })
+
+  output$download_gene_summary_clinical_plot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_clinical_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 8, height = 4, dpi = 150); return(invisible(NULL)) }
+      df_full <- filtered_data()
+      if (is.null(df_full)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 4, dpi = 150); return(invisible(NULL)) }
+      clin_vars <- c("Age", "BM_blast_percent", "PB_blast_percent", "WBC", "Hemoglobin", "Platelet")
+      clin_vars <- clin_vars[clin_vars %in% colnames(df_full)]
+      if (length(clin_vars) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No clinical variables") + theme_void(), width = 8, height = 4, dpi = 150); return(invisible(NULL)) }
+      cols_needed <- c("Sample", "Gene_for_analysis", clin_vars)
+      df <- df_full[!duplicated(df_full$Sample), cols_needed[cols_needed %in% colnames(df_full)], drop = FALSE]
+      samples_with_g <- unique(df_full$Sample[as.character(df_full$Gene_for_analysis) == g])
+      df_one <- df[, c("Sample", clin_vars[clin_vars %in% colnames(df)]), drop = FALSE]
+      mut_lab <- paste0(g, " mut")
+      df_one$Mutation <- ifelse(df_one$Sample %in% samples_with_g, mut_lab, "WT")
+      long_list <- list(); pval_list <- list()
+      unit_labels <- c("WBC" = "WBC (1e-9/l)", "Age" = "Age (years)", "Hemoglobin" = "Hemoglobin (g/dl)", "Platelet" = "Platelet (1e-9/l)", "BM_blast_percent" = "BM blasts (%)", "PB_blast_percent" = "PB blasts (%)")
+      for (cv in clin_vars) {
+        df_one[[cv]] <- as.numeric(df_one[[cv]])
+        sub <- df_one[!is.na(df_one[[cv]]), c("Sample", "Mutation", cv), drop = FALSE]
+        if (cv == "WBC") sub <- sub[sub[[cv]] <= 200, , drop = FALSE]
+        else if (cv == "Hemoglobin") sub <- sub[sub[[cv]] <= 15, , drop = FALSE]
+        else if (cv == "Platelet") sub <- sub[sub[[cv]] <= 300, , drop = FALSE]
+        if (nrow(sub) >= 5) {
+          names(sub)[3] <- "value"; sub$variable <- cv
+          vlbl <- if (cv %in% names(unit_labels)) unit_labels[cv] else cv
+          sub$variable_label <- vlbl
+          long_list[[length(long_list) + 1L]] <- sub[, c("Sample", "Mutation", "variable", "variable_label", "value")]
+          pv <- if (length(sub$value[sub$Mutation == "WT"]) >= 2 && length(sub$value[sub$Mutation == mut_lab]) >= 2) tryCatch(stats::wilcox.test(value ~ Mutation, data = sub, exact = FALSE)$p.value, error = function(e) NA_real_) else NA_real_
+          pval_list[[vlbl]] <- pv
+        }
+      }
+      if (length(long_list) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data") + theme_void(), width = 8, height = 4, dpi = 150); return(invisible(NULL)) }
+      long_df <- do.call(rbind, long_list)
+      desired_order <- c("Age (years)", "BM blasts (%)", "PB blasts (%)", "WBC (1e-9/l)", "Hemoglobin (g/dl)", "Platelet (1e-9/l)")
+      present_order <- intersect(desired_order, unique(long_df$variable_label))
+      long_df$variable_label <- factor(long_df$variable_label, levels = present_order)
+      sig_label <- function(p) { if (is.na(p)) return("ns"); if (p < 0.001) return("***"); if (p < 0.01) return("**"); if (p < 0.05) return("*"); return("ns") }
+      sig_labels <- vapply(present_order, function(vl) sig_label(pval_list[[vl]]), character(1))
+      ann_df <- data.frame(variable_label = factor(present_order, levels = present_order), sig = sig_labels, y = vapply(present_order, function(vl) max(long_df$value[long_df$variable_label == vl], na.rm = TRUE), numeric(1)), stringsAsFactors = FALSE)
+      y_range_per_var <- vapply(present_order, function(vl) { r <- range(long_df$value[long_df$variable_label == vl], na.rm = TRUE); r[2] - r[1] }, numeric(1))
+      ann_df$y <- ann_df$y + 0.08 * pmax(y_range_per_var, 1)
+      pal_clin <- setNames(c("gray70", "#8B0000"), c("WT", mut_lab))
+      p <- ggplot(long_df, aes(x = Mutation, y = value, fill = Mutation)) + geom_boxplot(alpha = 0.8) + geom_text(data = ann_df, aes(x = 1.5, y = y, label = sig), inherit.aes = FALSE, size = 5, fontface = "bold") + scale_fill_manual(values = pal_clin) + facet_wrap(~ variable_label, scales = "free_y", nrow = 1) + labs(x = NULL, y = NULL) + theme_minimal(base_size = 12) + theme(legend.position = "none", strip.text = element_text(size = 14, face = "bold"))
+      ggsave(file, plot = p, width = 10, height = 4, dpi = 300)
+    }
+  )
+
+  output$download_gene_summary_lollipop_plot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_lollipop_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      df <- gene_summary_data()
+      if (is.null(df) || nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No mutations") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      aa_col <- if ("HGVSp_Short" %in% colnames(df)) "HGVSp_Short" else if ("AA_change" %in% colnames(df)) "AA_change" else if ("Protein_Change" %in% colnames(df)) "Protein_Change" else if ("protein" %in% colnames(df)) "protein" else NULL
+      if (is.null(aa_col)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No protein-change column") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      g_base <- gsub("^([A-Z0-9]+)[_-].*$", "\\1", g); if (!grepl("^[A-Z0-9]+$", g_base)) g_base <- g
+      norm <- normalize_protein_change_for_maf(df[[aa_col]])
+      has_position <- !is.na(norm$position) & norm$hgvsp != "p.?"
+      if (sum(has_position) < 1L) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No valid AA positions") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      pos <- norm$position[has_position]; pos_range <- range(pos, na.rm = TRUE); if (diff(pos_range) < 1) pos_range <- pos_range + c(-5, 5)
+      pos_counts <- as.data.frame(table(Position = pos), stringsAsFactors = FALSE); pos_counts$Position <- as.integer(pos_counts$Position); pos_counts$Freq <- as.numeric(pos_counts$Freq)
+      if (nrow(pos_counts) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No positions") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      p <- ggplot(pos_counts, aes(x = Position, y = Freq)) + geom_segment(aes(x = Position, xend = Position, y = 0, yend = Freq), linewidth = 0.8, color = "#374e55") + geom_point(size = 3, color = "#8B0000", fill = "#8B0000", shape = 21) + labs(title = paste("Mutation distribution:", g_base), x = "Protein position", y = "Count") + theme_minimal(base_size = 12) + scale_x_continuous(limits = pos_range + c(-1, 1) * 0.02 * diff(pos_range))
+      ggsave(file, plot = p, width = 8, height = 6, dpi = 300)
+    }
+  )
+
+  output$download_gene_summary_survival <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_survival_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      surv_uniq <- gene_summary_survival_km_data()
+      if (is.null(surv_uniq) || length(unique(surv_uniq$Mutation)) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient groups") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Mutation, data = surv_uniq)
+      if (has_survminer) { p <- survminer::ggsurvplot(fit, data = surv_uniq, risk.table = TRUE, pval = TRUE, title = paste("Survival by", g), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), pval.coord = c(0, 0.05)); png(file, width = 7, height = 6, units = "in", res = 300); print(p); dev.off() } else { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer required") + theme_void(), width = 7, height = 5, dpi = 150) }
+    }
+  )
+
+  output$download_gene_summary_oncoprint <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_oncoprint_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      od <- gene_summary_oncoprint_data()
+      if (is.null(od) || !is.matrix(od$temp_dat) || nrow(od$temp_dat) == 0 || ncol(od$temp_dat) == 0) { png(file, width = 6, height = 4, res = 150); plot.new(); text(0.5, 0.5, "No data"); dev.off(); return(invisible(NULL)) }
+      temp_dat <- od$temp_dat; samples <- od$samples; genes <- od$genes
+      rows <- list()
+      for (i in seq_len(nrow(temp_dat))) {
+        for (j in seq_len(ncol(temp_dat))) {
+          v <- temp_dat[i, j]
+          if (is.na(v) || v == "") next
+          vts <- strsplit(as.character(v), ";")[[1]]
+          rows[[length(rows) + 1L]] <- data.frame(Sample = colnames(temp_dat)[j], Gene = rownames(temp_dat)[i], variant_type = vts[1], stringsAsFactors = FALSE)
+        }
+      }
+      mut_long <- if (length(rows) > 0) do.call(rbind, rows) else NULL
+      if (is.null(mut_long) || nrow(mut_long) == 0) { png(file, width = 6, height = 4, res = 150); plot.new(); text(0.5, 0.5, "No data"); dev.off(); return(invisible(NULL)) }
+      PAL_VAR <- c(Deletion = "#374E55", Indel = "#DF8F44", ITD = "#79AF97", SNV = "#B24745", Splicing = "#6A6599", PTD = "tan", Other = "#80796B", Unknown = "#80796B")
+      mut_long$Gene <- factor(mut_long$Gene, levels = rev(genes)); mut_long$Sample <- factor(mut_long$Sample, levels = samples)
+      mut_long$Sample_num <- as.numeric(mut_long$Sample); mut_long$Gene_num <- as.numeric(mut_long$Gene)
+      bg <- expand.grid(Sample = factor(samples, levels = samples), Gene = factor(genes, levels = rev(genes)))
+      bg$Sample_num <- as.numeric(bg$Sample); bg$Gene_num <- as.numeric(bg$Gene)
+      p <- ggplot() + geom_tile(data = bg, aes(x = Sample_num, y = Gene_num), fill = "gray97", width = 1, height = 1) + geom_rect(data = mut_long, aes(xmin = Sample_num - 0.25, xmax = Sample_num + 0.25, ymin = Gene_num - 0.45, ymax = Gene_num + 0.45, fill = variant_type)) + scale_fill_manual(values = PAL_VAR, name = "Variant") + scale_x_continuous(limits = c(0.5, length(samples) + 0.5), expand = c(0, 0)) + scale_y_continuous(breaks = seq_along(genes), labels = rev(genes), expand = c(0, 0)) + labs(x = NULL, y = NULL) + theme_minimal(base_size = 10) + theme(axis.text.x = element_blank(), axis.ticks = element_blank(), panel.grid = element_blank(), legend.position = "right")
+      ggsave(file, plot = p, width = max(10, ncol(temp_dat) * 0.12), height = max(6, nrow(temp_dat) * 0.25), dpi = 200)
+    }
+  )
+
+  output$download_gene_summary_comut_heatmap <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_comut_heatmap_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 5, height = 5, dpi = 150); return(invisible(NULL)) }
+      cooc <- cooccurrence_data()
+      if (is.null(cooc$matrix) || !g %in% rownames(cooc$matrix)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Gene not in matrix") + theme_void(), width = 5, height = 5, dpi = 150); return(invisible(NULL)) }
+      mat <- cooc$matrix; others <- setdiff(colnames(mat), g)
+      keep_genes <- filtered_genes(); if (length(keep_genes) > 0) others <- intersect(others, keep_genes)
+      if (length(others) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No other genes") + theme_void(), width = 5, height = 5, dpi = 150); return(invisible(NULL)) }
+      vec <- mat[others, g]; vec_log <- log2(vec + 0.01); vec_log[vec_log > 2] <- 2; vec_log[vec_log < -2] <- -2
+      ord <- order(vec_log, decreasing = TRUE); genes_ord <- names(vec_log)[ord]
+      df_plot <- data.frame(Gene = factor(genes_ord, levels = rev(genes_ord)), log2OR = vec_log[ord])
+      p <- ggplot(df_plot, aes(x = 1, y = Gene, fill = log2OR)) + geom_tile() + scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) + labs(x = NULL, y = NULL, fill = "log2(OR)", title = paste("Co-occurrence with", g)) + theme_minimal(base_size = 14) + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+      ggsave(file, plot = p, width = max(5, length(others) * 0.15), height = 6, dpi = 300)
+    }
+  )
+
+  output$download_gene_summary_comut2_plot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_comut2_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- gene_summary_comut2_data()
+      if (is.null(df) || length(unique(df$Group)) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select second gene") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = df)
+      if (has_survminer) { p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Pairwise co-mutation survival", xlab = "Years", pval.coord = c(0, 0.05)); png(file, width = 7, height = 6, units = "in", res = 300); print(p); dev.off() } else { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer required") + theme_void(), width = 7, height = 5, dpi = 150) }
+    }
+  )
+
+  output$download_gene_summary_comut3_plot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_comut3_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- gene_summary_comut3_data()
+      if (is.null(df) || length(unique(df$Group)) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select second and third genes") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = df)
+      if (has_survminer) { p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Triple co-mutation survival", xlab = "Years", pval.coord = c(0, 0.05)); png(file, width = 7, height = 6, units = "in", res = 300); print(p); dev.off() } else { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer required") + theme_void(), width = 7, height = 5, dpi = 150) }
+    }
+  )
+
+  output$download_gene_summary_vaf_plot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_vaf_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 5, height = 4, dpi = 150); return(invisible(NULL)) }
+      df <- filtered_data(); df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No VAF data") + theme_void(), width = 5, height = 4, dpi = 150); return(invisible(NULL)) }
+      p <- ggplot(df, aes(x = VAF)) + geom_histogram(bins = 25, fill = "#374e55", alpha = 0.8) + labs(x = "VAF (%)", y = "Count", title = paste("VAF distribution for", g)) + theme_minimal(base_size = 14)
+      ggsave(file, plot = p, width = 6, height = 4, dpi = 300)
+    }
+  )
+
+  output$download_gene_summary_vaf_survival_plot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_vaf_survival_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      df <- filtered_data(); df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df$VAF) & df$VAF > 0, c("Sample", "VAF"), drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No VAF data") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      vaf_agg <- aggregate(VAF ~ Sample, data = df, max)
+      surv_df <- survival_data(); surv_df <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
+      merge_df <- merge(vaf_agg, surv_df, by = "Sample", all = FALSE)
+      if (nrow(merge_df) < 20 || !has_maxstat) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Need ≥20 samples; maxstat required") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ VAF, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
+      if (is.null(mst)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "MaxStat failed") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      merge_df$Group <- factor(ifelse(merge_df$VAF > mst$estimate, "High VAF", "Low VAF"), levels = c("High VAF", "Low VAF"))
+      fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = merge_df)
+      if (has_survminer) { p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low VAF (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), pval.coord = c(0, 0.05)); png(file, width = 7, height = 6, units = "in", res = 300); print(p); dev.off() } else { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer required") + theme_void(), width = 7, height = 5, dpi = 150) }
+    }
+  )
+
+  output$download_gene_summary_drug_volcano <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_drug_volcano_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      df <- gene_summary_drug_mut_wt()
+      if (is.null(df) || nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No drug data") + theme_void(), width = 6, height = 5, dpi = 150); return(invisible(NULL)) }
+      df <- df[!is.na(df$p_value) & df$p_value > 0, , drop = FALSE]
+      df$neglog10p <- -log10(df$p_value)
+      df$Category <- "Not significant"; df$Category[df$p_value < 0.05 & df$delta_AUC_mut_wt < 0] <- "Sensitive"; df$Category[df$p_value < 0.05 & df$delta_AUC_mut_wt > 0] <- "Resistant"
+      df_sig <- df[df$Category != "Not significant", , drop = FALSE]
+      label_sensitive <- df_sig[df_sig$Category == "Sensitive", , drop = FALSE]
+      label_resistant <- df_sig[df_sig$Category == "Resistant", , drop = FALSE]
+      if (nrow(label_sensitive) > 5) label_sensitive <- label_sensitive[order(label_sensitive$p_value)[seq_len(5)], , drop = FALSE]
+      if (nrow(label_resistant) > 5) label_resistant <- label_resistant[order(label_resistant$p_value)[seq_len(5)], , drop = FALSE]
+      df_label <- rbind(label_sensitive, label_resistant)
+      p <- ggplot(df, aes(x = delta_AUC_mut_wt, y = neglog10p, color = Category, size = n_mut)) + geom_point(alpha = 0.8) + geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray50") + geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") + scale_color_manual(values = c("Sensitive" = "#b2182b", "Resistant" = "#2166ac", "Not significant" = "gray50"), name = NULL) + scale_size_continuous(name = "N (mut)", range = c(2, 10)) + labs(x = "Mean AUC (mut) - Mean AUC (WT)", y = "-log10(p)", title = paste(g, ": Mut vs WT drug AUC")) + theme_minimal(base_size = 12) + theme(legend.position = "top")
+      if (nrow(df_label) > 0) {
+        if (has_ggrepel) {
+          p <- p + ggrepel::geom_label_repel(data = df_label, aes(x = delta_AUC_mut_wt, y = neglog10p, label = Inhibitor), size = 5, show.legend = FALSE, max.overlaps = Inf)
+        } else {
+          p <- p + geom_text(data = df_label, aes(x = delta_AUC_mut_wt, y = neglog10p, label = Inhibitor), hjust = -0.1, size = 5, show.legend = FALSE)
+        }
+      }
+      ggsave(file, plot = p, width = 8, height = 6, dpi = 300)
+    }
+  )
+
+  output$download_gene_summary_drug_dotplot <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_drug_dotplot_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      g <- input$gene_summary
+      if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      corr <- gene_summary_drug_correlations_gene()
+      if (is.null(corr) || nrow(corr) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No drug data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      if ("n" %in% colnames(corr)) corr <- corr[!is.na(corr$n) & corr$n >= 10, , drop = FALSE]
+      base_genes <- gene_to_beataml_bases(g); sub <- corr[corr$Gene %in% base_genes, , drop = FALSE]
+      if (nrow(sub) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No correlations") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      sub <- sub[!is.na(sub$p_value) & sub$p_value < 0.05, , drop = FALSE]
+      if (nrow(sub) == 0) sub <- corr[corr$Gene %in% base_genes, , drop = FALSE]
+      if (nrow(sub) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No p < 0.05 correlations") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      sub <- sub[order(sub$p_value), , drop = FALSE]; inhibitors <- unique(sub$Inhibitor)
+      if (length(inhibitors) > 24) inhibitors <- head(inhibitors, 24)
+      b <- beataml_for_drug(); if (is.null(b) || !b$ok) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      subset <- input$subset; if (is.null(subset) || subset == "All") subset <- "de_novo"
+      subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other"); subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+      allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
+      scatter_list <- list()
+      for (inh in inhibitors) {
+        auc_sub <- b$auc[b$auc$inhibitor == inh & b$auc$Sample %in% allowed, c("Sample", "auc"), drop = FALSE]
+        mut_sub <- b$mutations[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed, c("Sample", "VAF"), drop = FALSE]
+        merged <- merge(auc_sub, mut_sub, by = "Sample")
+        if (nrow(merged) >= 5) {
+          corr_row <- sub[sub$Inhibitor == inh, , drop = FALSE]
+          if (nrow(corr_row) > 0) { fit <- tryCatch(lm(auc ~ VAF, data = merged), error = function(e) NULL); slope <- if (!is.null(fit)) coef(fit)[2] else NA_real_; trend <- if (is.na(slope)) "Unknown" else if (slope < 0) "Sensitive" else "Resistant"; merged$Inhibitor <- inh; merged$R_squared <- corr_row$R_squared[1]; merged$p_value <- corr_row$p_value[1]; merged$q_value <- corr_row$q_value[1]; merged$Trend <- trend; scatter_list[[length(scatter_list) + 1L]] <- merged }
+        }
+      }
+      if (length(scatter_list) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient scatter data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      scatter_df <- do.call(rbind, scatter_list); scatter_df$Inhibitor <- factor(scatter_df$Inhibitor, levels = inhibitors); scatter_df$Trend <- factor(scatter_df$Trend, levels = c("Sensitive", "Resistant", "Unknown"))
+      label_df <- unique(scatter_df[, c("Inhibitor", "R_squared", "p_value", "q_value", "Trend"), drop = FALSE]); label_df$star <- ifelse(label_df$q_value < 0.1, "*", ""); label_df$label <- paste0("R² = ", round(label_df$R_squared, 3), ", p ", format_pval_display(label_df$p_value), label_df$star)
+      trend_colors <- c("Sensitive" = "#b2182b", "Resistant" = "#2166ac", "Unknown" = "gray50")
+      p <- ggplot(scatter_df, aes(x = VAF, y = auc, color = Trend)) + geom_point(size = 2.5, alpha = 0.7) + geom_smooth(method = "lm", se = TRUE, alpha = 0.2, linewidth = 0.8) + scale_color_manual(values = trend_colors, name = "Trend", guide = "none") + facet_wrap(~ Inhibitor, scales = "free", ncol = min(3, length(inhibitors))) + labs(x = "VAF (%)", y = "Drug AUC", title = paste("VAF vs AUC:", g, "(p < 0.05)")) + theme_minimal(base_size = 16) + theme(axis.text = element_text(size = 14), strip.text = element_text(size = 14, face = "bold"), strip.background = element_rect(fill = "#f0f0f0", color = NA), panel.spacing = unit(1, "lines"), plot.title = element_text(size = 17, face = "bold")) + geom_text(aes(x = Inf, y = Inf, label = label), hjust = 1.1, vjust = 1.5, size = 4, inherit.aes = FALSE, data = label_df)
+      ggsave(file, plot = p, width = 4 * min(3, length(inhibitors)), height = 4 * ceiling(length(inhibitors) / 3), dpi = 300)
+    }
+  )
+
+  output$download_gene_summary_drug_mut_wt_table <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_drug_mut_wt_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
+    content = function(file) {
+      mut_wt <- gene_summary_drug_mut_wt()
+      if (is.null(mut_wt) || nrow(mut_wt) == 0) return(write("No data", file))
+      write.csv(mut_wt[, c("Inhibitor", "delta_AUC_mut_wt", "p_value", "n_mut", "n_wt")], file, row.names = FALSE)
+    }
+  )
+
+  output$download_gene_summary_drug_table <- downloadHandler(
+    filename = function() paste0("gene_", input$gene_summary, "_drug_correlations_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
+    content = function(file) {
+      corr <- gene_summary_drug_correlations_gene()
+      if (is.null(corr) || nrow(corr) == 0) return(write("No data", file))
+      g <- input$gene_summary; base_genes <- gene_to_beataml_bases(g); sub <- corr[corr$Gene %in% base_genes, , drop = FALSE]
+      if (nrow(sub) == 0) return(write("No data", file))
+      cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "n"); cols <- cols[cols %in% colnames(sub)]
+      write.csv(sub[, cols, drop = FALSE], file, row.names = FALSE)
+    }
+  )
 
   output$data_table <- renderDT({
     df <- req(filtered_data())
