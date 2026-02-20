@@ -531,8 +531,13 @@ ui <- fluidPage(
       var overlayVisible = false;
       var subTabOutputCount = 0;
       var subTabMaxWait = null;
+      var maxOverlayTimeout = null;
       var mainTabs = ['analyses', 'meta_aml4'];
       var LOADING_DELAY_MS = 2000;
+      var MAX_OVERLAY_MS = 30000;  // Auto-hide after 30 seconds max
+      
+      // Mark About tab as always loaded
+      tabLoaded['about'] = true;
       
       function showOverlay() {
         overlayVisible = true;
@@ -546,7 +551,18 @@ ui <- fluidPage(
           clearTimeout(subTabMaxWait);
           subTabMaxWait = null;
         }
+        if (maxOverlayTimeout) {
+          clearTimeout(maxOverlayTimeout);
+          maxOverlayTimeout = null;
+        }
         $('#data-loading-overlay').css({'display': 'flex'});
+        // Safety: auto-hide after MAX_OVERLAY_MS
+        maxOverlayTimeout = setTimeout(function() {
+          if (overlayVisible) {
+            maxOverlayTimeout = null;
+            hideOverlay();
+          }
+        }, MAX_OVERLAY_MS);
       }
       
       function hideOverlay() {
@@ -554,6 +570,10 @@ ui <- fluidPage(
         var elapsed = Date.now() - overlayShownAt;
         var wait = Math.max(0, minOverlayMs - elapsed);
         if (currentTab) tabLoaded[currentTab] = true;
+        if (maxOverlayTimeout) {
+          clearTimeout(maxOverlayTimeout);
+          maxOverlayTimeout = null;
+        }
         hideTimeout = setTimeout(function() { 
           $('#data-loading-overlay').hide(); 
           hideTimeout = null;
@@ -561,10 +581,14 @@ ui <- fluidPage(
       }
       
       function scheduleOverlay() {
+        // Don't schedule overlay for About tab or if tab is already loaded
+        if (!currentTab || currentTab === 'about' || mainTabs.indexOf(currentTab) === -1) return;
+        if (tabLoaded[currentTab] === true) return;
         if (delayedShowTimeout) clearTimeout(delayedShowTimeout);
         delayedShowTimeout = setTimeout(function() {
           delayedShowTimeout = null;
-          if (currentTab && (tabLoaded[currentTab] === undefined || tabLoaded[currentTab] === false)) {
+          // Double-check conditions before showing
+          if (currentTab && currentTab !== 'about' && mainTabs.indexOf(currentTab) !== -1 && (tabLoaded[currentTab] === undefined || tabLoaded[currentTab] === false)) {
             showOverlay();
           }
         }, LOADING_DELAY_MS);
@@ -581,18 +605,27 @@ ui <- fluidPage(
       
       $(document).on('click', '[data-value]', function() {
         var val = $(this).attr('data-value');
-        if (val && val !== 'about' && (tabLoaded[val] === undefined || tabLoaded[val] === false)) {
+        if (!val || val === 'about') {
           currentTab = val;
-          renderedOutputs = {};
+          return;
+        }
+        currentTab = val;
+        renderedOutputs = {};
+        subTabOutputCount = 0;
+        if (subTabMaxWait) {
+          clearTimeout(subTabMaxWait);
+          subTabMaxWait = null;
+        }
+        if (mainTabs.indexOf(val) !== -1 && (tabLoaded[val] === undefined || tabLoaded[val] === false)) {
           scheduleOverlay();
-          if (mainTabs.indexOf(val) === -1) {
-            subTabMaxWait = setTimeout(function() {
-              if (currentTab === val) {
-                subTabMaxWait = null;
-                onLoadingComplete();
-              }
-            }, 6000);
-          }
+        } else if (mainTabs.indexOf(val) === -1) {
+          // Sub-tab: auto-complete after 6 seconds if no outputs render
+          subTabMaxWait = setTimeout(function() {
+            if (currentTab === val) {
+              subTabMaxWait = null;
+              onLoadingComplete();
+            }
+          }, 6000);
         }
       });
       
@@ -611,7 +644,18 @@ ui <- fluidPage(
             clearTimeout(subTabMaxWait);
             subTabMaxWait = null;
           }
-          if (mainTabs.indexOf(currentTab) !== -1 && !tabLoaded[currentTab]) {
+          // Only cancel pending overlay when switching to About
+          if (currentTab === 'about') {
+            if (delayedShowTimeout) {
+              clearTimeout(delayedShowTimeout);
+              delayedShowTimeout = null;
+            }
+            tabLoaded['about'] = true;
+            if (overlayVisible) hideOverlay();
+            return;
+          }
+          // For analyses/meta_aml4: always schedule overlay (it will show after 2s if tab not yet loaded)
+          if (mainTabs.indexOf(currentTab) !== -1) {
             scheduleOverlay();
           }
         }
@@ -665,7 +709,7 @@ ui <- fluidPage(
     tabPanel("About", value = "about",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         h2("Welcome to Meta AML Explorer"),
-        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " tab offers cohort selection and core analyses:"),
+        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " tab offers the following analyses:"),
         tags$ul(
           tags$li("Cohort selection by AML type (e.g. de novo, secondary), dataset (e.g. UK-NCRI), karyotype (NK/Complex/Other), and minimum gene frequency (% of samples)."),
           tags$li("Single mutation associations (clinical variables, survival, hazard ratios)"),
@@ -824,18 +868,20 @@ server <- function(input, output, session) {
             id = "meta4_all_gene_tabs",
             selected = inner_tab,
             tabPanel("Single mutation", value = "Single",
+              tagList(
               fluidRow(
                 column(12, wellPanel(
-                  h4("Clinical Variable by Mutation Status"),
+                  fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot"))),
                   selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
                   p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. Significance: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
                   plotOutput("clinical_plot", height = 400)))
               ),
               fluidRow(
-                column(6, wellPanel(style = "min-height: 560px;", h4("Hazard Ratios"), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
-                column(6, wellPanel(style = "min-height: 560px;", h4("Kaplan-Meier"), selectInput("surv_gene", "Gene:", choices = gene_choices), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
+                column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 400), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+                column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", "Gene:", choices = gene_choices), plotOutput("survival_plot", height = 340), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
               ),
-              fluidRow(column(12, wellPanel(h4("Survival Summary"), DTOutput("survival_table"))))
+              fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
+              )
             ),
             tabPanel("Co-mutation",
               fluidRow(
@@ -925,7 +971,7 @@ server <- function(input, output, session) {
                     column(6, plotOutput("drug_scatter_boxplot", width = "100%", height = 320)),
                     column(6, plotOutput("drug_scatter_plot", width = "100%", height = 320))
                   )
-                )),
+                ))),
                 column(6, wellPanel(
                   fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
                   p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF–AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
@@ -971,16 +1017,16 @@ server <- function(input, output, session) {
         tabPanel("Single mutation associations",
           fluidRow(
             column(12, wellPanel(
-              h4("Clinical Variable by Mutation Status"),
+              fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot"))),
               selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
               p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
               plotOutput("clinical_plot", height = 400)))
           ),
           fluidRow(
-            column(6, wellPanel(style = "min-height: 560px;", h4("Hazard Ratios"), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
-            column(6, wellPanel(style = "min-height: 560px;", h4("Kaplan-Meier"), selectInput("surv_gene", "Gene:", choices = gene_choices_analyses), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
+            column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 400), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+            column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", "Gene:", choices = gene_choices_analyses), plotOutput("survival_plot", height = 340), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
           ),
-          fluidRow(column(12, wellPanel(h4("Survival Summary"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Hazard ratios (HR) and 95% CI from Cox model. HR > 1 = higher risk in mutated / high-VAF group."), DTOutput("survival_table"))))
+          fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
         ),
         tabPanel("Co-mutation Associations",
           fluidRow(
@@ -1070,7 +1116,7 @@ server <- function(input, output, session) {
                 column(6, plotOutput("drug_scatter_boxplot", width = "100%", height = 320)),
                 column(6, plotOutput("drug_scatter_plot", width = "100%", height = 320))
               )
-            )),
+            ))),
             column(6, wellPanel(
               fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
               p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF–AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
@@ -1764,12 +1810,20 @@ server <- function(input, output, session) {
 
   output$survival_plot <- renderPlot({
     gene <- input$surv_gene
-    if (is.null(gene) || gene == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
+    if (is.null(gene) || gene == "") return(
+      ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene", size = 10) +
+        theme_void() +
+        theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA))
+    )
     surv_df <- survival_data()
     mut_samples <- unique(surv_df$Sample[surv_df$Gene_for_analysis == gene])
     surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
     surv_uniq$Mutation <- ifelse(surv_uniq$Sample %in% mut_samples, paste0(gene, " mut"), "WT")
-    if (length(unique(surv_uniq$Mutation)) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient groups"))
+    if (length(unique(surv_uniq$Mutation)) < 2) return(
+      ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient groups", size = 10) +
+        theme_void() +
+        theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA))
+    )
     fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Mutation, data = surv_uniq)
     strata_names <- names(fit$strata)
     is_mut <- grepl(" mut", strata_names, fixed = TRUE)
@@ -1806,18 +1860,20 @@ server <- function(input, output, session) {
     for (g in genes) {
       mut_pts <- unique(surv_df$Sample[surv_df$Gene_for_analysis == g])
       surv_uniq$mut <- surv_uniq$Sample %in% mut_pts
-      if (sum(surv_uniq$mut) >= 10 && sum(!surv_uniq$mut) >= 10) {
+      n_mut <- sum(surv_uniq$mut)
+      n_wt <- sum(!surv_uniq$mut)
+      if (n_mut >= 10 && n_wt >= 10) {
         m <- tryCatch(coxph(Surv(Time_to_OS, as.numeric(Censor)) ~ mut, data = surv_uniq), error = function(e) NULL)
         if (!is.null(m)) {
           ci <- confint(m)
-          res[[g]] <- data.frame(Gene = g, HR = exp(coef(m))["mutTRUE"], lower = exp(ci[1]), upper = exp(ci[2]),
+          res[[g]] <- data.frame(Gene = g, n_mut = n_mut, n_wt = n_wt, HR = exp(coef(m))["mutTRUE"], lower = exp(ci[1]), upper = exp(ci[2]),
             p = summary(m)$coefficients["mutTRUE", "Pr(>|z|)"], stringsAsFactors = FALSE)
         }
       }
     }
     out <- do.call(rbind, res)
     if (!is.null(out)) out <- out[!is.na(out$HR) & out$lower < 10 & out$upper < 10, , drop = FALSE]
-    else out <- data.frame(Gene = character(), HR = numeric(), lower = numeric(), upper = numeric(), p = numeric())
+    else out <- data.frame(Gene = character(), n_mut = integer(), n_wt = integer(), HR = numeric(), lower = numeric(), upper = numeric(), p = numeric())
     out
   })
 
@@ -1905,6 +1961,8 @@ server <- function(input, output, session) {
     df$Gene <- factor(df$Gene, levels = df$Gene)
     df$ColorGroup <- ifelse(df$p >= 0.05, "Not significant",
       ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
+    n_genes <- nrow(df)
+    y_axis_size <- max(7, min(14, round(420 / n_genes)))
     ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
       geom_pointrange(size = 0.5) +
       geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
@@ -1912,17 +1970,78 @@ server <- function(input, output, session) {
       scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
       labs(x = NULL, y = "Hazard Ratio") +
       theme_minimal(base_size = 16) +
-      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15))
+      theme(axis.text.y = element_text(size = y_axis_size), axis.text.x = element_text(size = 14), axis.title = element_text(size = 15))
   })
 
   output$survival_table <- renderDT({
     df <- forest_data()
-    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), HR_CI = character(), p = character(), p_adj = character()), options = list(pageLength = 15), rownames = FALSE))
+    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), n_mut = integer(), n_wt = integer(), HR_CI = character(), p_value = character(), p_adj = character()), options = list(pageLength = 10), rownames = FALSE))
     df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
+    df$p_value <- format_pval_display(df$p)
     df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
-    df$p <- format_pval_display(df$p)
-    datatable(df[, c("Gene", "HR_CI", "p", "p_adj")], options = list(pageLength = 15), rownames = FALSE)
+    datatable(df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj")], options = list(pageLength = 10), rownames = FALSE)
   })
+
+  output$download_forest_plot <- downloadHandler(
+    filename = function() paste0("survival_forest_plot_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- forest_data()
+      if (is.null(df) || nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      df <- df[order(df$HR), , drop = FALSE]
+      df$Gene <- factor(df$Gene, levels = df$Gene)
+      df$ColorGroup <- ifelse(df$p >= 0.05, "Not significant", ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
+      n_genes <- nrow(df)
+      y_axis_size <- max(7, min(14, round(420 / n_genes)))
+      p <- ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
+        geom_pointrange(size = 0.5) +
+        geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+        coord_flip() +
+        scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
+        labs(x = NULL, y = "Hazard Ratio") +
+        theme_minimal(base_size = 16) +
+        theme(axis.text.y = element_text(size = y_axis_size), axis.text.x = element_text(size = 14), axis.title = element_text(size = 15))
+      ggsave(file, plot = p, width = max(7, n_genes * 0.2), height = max(5, n_genes * 0.15), dpi = 300)
+    }
+  )
+
+  output$download_survival_plot <- downloadHandler(
+    filename = function() paste0("survival_km_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      gene <- input$surv_gene
+      if (is.null(gene) || gene == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene", size = 10) + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      surv_df <- survival_data()
+      mut_samples <- unique(surv_df$Sample[surv_df$Gene_for_analysis == gene])
+      surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
+      surv_uniq$Mutation <- ifelse(surv_uniq$Sample %in% mut_samples, paste0(gene, " mut"), "WT")
+      if (length(unique(surv_uniq$Mutation)) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient groups", size = 10) + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Mutation, data = surv_uniq)
+      strata_names <- names(fit$strata)
+      is_mut <- grepl(" mut", strata_names, fixed = TRUE)
+      surv_pal <- ifelse(is_mut, "#8B0000", "#4D4D4D")
+      if (has_survminer) {
+        legend_labs <- gsub("^Mutation=", "", names(fit$strata))
+        p <- survminer::ggsurvplot(fit, data = surv_uniq, risk.table = TRUE, pval = TRUE, title = paste("Survival by", gene, "mutation status"), xlab = "Years", palette = surv_pal, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05))
+        png(file, width = 7, height = 6, units = "in", res = 300)
+        print(p)
+        dev.off()
+      } else {
+        ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer for KM plots") + theme_void(), width = 7, height = 5, dpi = 150)
+      }
+    }
+  )
+
+  output$download_survival_table <- downloadHandler(
+    filename = function() paste0("survival_summary_table_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
+    content = function(file) {
+      df <- forest_data()
+      if (is.null(df) || nrow(df) == 0) return(write("No data", file))
+      df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
+      df$p_value <- format_pval_display(df$p)
+      df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
+      out <- df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj"), drop = FALSE]
+      write.csv(out, file, row.names = FALSE)
+    }
+  )
 
   output$clinical_plot <- renderPlot({
     var <- input$clin_var
@@ -1967,6 +2086,45 @@ server <- function(input, output, session) {
       theme_minimal(base_size = 14) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title = element_text(size = 13))
   })
+
+  output$download_clinical_plot <- downloadHandler(
+    filename = function() paste0("clinical_by_mutation_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      var <- input$clin_var
+      if (is.null(var) || var == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a variable") + theme_void(), width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      df <- filtered_data()
+      if (is.null(df) || !var %in% colnames(df)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Variable not in data") + theme_void(), width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      df_one <- df[!duplicated(df$Sample), c("Sample", "Gene_for_analysis", var), drop = FALSE]
+      df_one[[var]] <- as.numeric(df_one[[var]])
+      df_one <- df_one[!is.na(df_one[[var]]), , drop = FALSE]
+      if (var == "WBC") df_one <- df_one[df_one[[var]] <= 200, , drop = FALSE]
+      else if (var == "Hemoglobin") df_one <- df_one[df_one[[var]] <= 15, , drop = FALSE]
+      else if (var == "Platelet") df_one <- df_one[df_one[[var]] <= 300, , drop = FALSE]
+      if (nrow(df_one) < 5) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data") + theme_void(), width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
+      gene_tbl <- table(df_one$Gene_for_analysis)
+      min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+      if (min_pct > 0) {
+        n_samples <- length(unique(df_one$Sample))
+        if (n_samples > 0) {
+          gene_pct <- (gene_tbl / n_samples) * 100
+          keep_genes <- names(gene_pct)[gene_pct >= min_pct]
+          gene_tbl <- gene_tbl[names(gene_tbl) %in% keep_genes]
+        }
+      }
+      top_genes <- names(sort(gene_tbl, decreasing = TRUE))[1:min(20, length(gene_tbl))]
+      df_one <- df_one[df_one$Gene_for_analysis %in% top_genes, , drop = FALSE]
+      df_one$Gene <- factor(df_one$Gene_for_analysis, levels = top_genes)
+      unit_labels <- c("WBC" = "WBC (1e-9/l)", "Age" = "Age (years)", "Hemoglobin" = "Hemoglobin (g/dl)", "Platelet" = "Platelet (1e-9/l)", "BM_blast_percent" = "BM blasts (%)", "PB_blast_percent" = "PB blasts (%)")
+      y_label <- if (var %in% names(unit_labels)) unit_labels[var] else var
+      p <- ggplot(df_one, aes(x = Gene, y = .data[[var]], fill = Gene)) +
+        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+        scale_fill_discrete(guide = "none") +
+        labs(x = NULL, y = y_label, title = paste("Distribution of", y_label, "by gene")) +
+        theme_minimal(base_size = 14) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title = element_text(size = 13))
+      ggsave(file, plot = p, width = 10, height = 6, dpi = 300)
+    }
+  )
 
   # Co-occurrence computed on all genes (subset/cohort/karyotype only). Min. gene frequency filter is applied only for display.
   cooccurrence_data <- reactive({
@@ -3238,26 +3396,27 @@ server <- function(input, output, session) {
           p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
           plotOutput("gene_summary_clinical_plot", height = 260)),
         fluidRow(
-          column(6, wellPanel(
+          column(6, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
             fluidRow(column(8, h4("Mutation distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_lollipop_plot", "Download plot")))),
             p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Protein positions with mutations; height = count of mutations at that position."),
-            plotOutput("gene_summary_lollipop_plot", height = 380))),
-          column(6, wellPanel(
+            plotOutput("gene_summary_lollipop_plot", height = 460))),
+          column(6, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
             fluidRow(column(8, h4("Kaplan-Meier: Single gene")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_survival", "Download plot")))),
             p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT."),
-            plotOutput("gene_summary_survival", height = 480)))
+            plotOutput("gene_summary_survival", height = 460)))
         )
       ),
       comut = tagList(
         fluidRow(
-          column(9, wellPanel(
-            fluidRow(column(8, h4("Oncoprint: Co-mutations in samples with this gene mutated")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_oncoprint", "Download plot")))),
-            plotOutput("gene_summary_oncoprint", height = 480))),
-          column(3, wellPanel(
-            fluidRow(column(8, h4("Odds Ratio Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut_heatmap", "Download plot")))),
-            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = log2(OR) < 0 (mutually exclusive); ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = log2(OR) > 0 (co-occurring)."),
-            p(em("Calculated from all samples in the filtered subset, not just those with the gene mutated."), style = "font-size: 11px; color: #666; margin-bottom: 8px;"),
-            plotOutput("gene_summary_comut_heatmap", height = 480)))
+          column(9, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
+            fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_oncoprint", label = "", icon = icon("download"))))),
+            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", if (is.null(g) || g == "") "Co-occurring mutations in samples with this gene mutated." else paste0("Co-occurring mutations in samples with ", g, " mutated.")),
+            plotOutput("gene_summary_oncoprint", height = 460))),
+          column(3, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
+            fluidRow(column(8, h4("Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut_heatmap", label = "", icon = icon("download"))))),
+            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring."),
+            p(em("Calculated from all samples in the filtered subset, not just those included in the oncoprint."), style = "font-size: 11px; color: #666; margin-bottom: 8px;"),
+            plotOutput("gene_summary_comut_heatmap", height = 442)))
         ),
         fluidRow(
           column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", fluidRow(column(8, h4("Pairwise co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut2_plot", "Download plot")))), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
