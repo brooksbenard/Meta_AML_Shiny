@@ -2791,14 +2791,12 @@ server <- function(input, output, session) {
     compute_drug_vaf_correlations(b, subset = subset)
   })
 
-  # Single Gene Drug: only the correlation rows for the selected gene (avoids caching full table for this tab)
+  # Single Gene Drug: only the correlation rows for the selected gene (uses gene_summary_drug_subset)
   gene_summary_drug_correlations_gene <- reactive({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(NULL)
-    subset <- input$subset
-    if (is.null(subset) || subset == "All") subset <- "de_novo"
-    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
-    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    subset <- input$gene_summary_drug_subset
+    if (is.null(subset) || subset == "") subset <- "de_novo"
     nav <- input$main_nav
     base_genes <- gene_to_beataml_bases(g)
     full <- NULL
@@ -3445,6 +3443,7 @@ server <- function(input, output, session) {
           style = "background-color: #e9ecef;",
           h4("Drug sensitivity (Beat AML)"),
           p(style = "font-size: 14px; color: #333; margin-bottom: 8px;", "Associations between mutations and drug sensitivity were analysed using the Beat AML database (", tags$a("here", href = "https://biodev.github.io/BeatAML2/", target = "_blank"), ")."),
+          div(style = "margin-bottom: 10px;", selectInput("gene_summary_drug_subset", "Select Beat AML cohort for analysis:", choices = c("All" = "All", "De novo" = "de_novo", "Secondary" = "secondary"), selected = "de_novo")),
           p(style = "font-size: 12px; color: #555; margin-bottom: 8px;",
             strong("Mut vs WT:"), " Gene–inhibitor pairs included if there were ≥5 mutated samples (and ≥5 WT) with AUC data in the selected cohort. Statistical test: two-sample t-test (mutant vs WT mean AUC); p-values and FDR (Benjamini–Hochberg) for resistance/sensitivity trend.",
             br(),
@@ -3881,10 +3880,8 @@ server <- function(input, output, session) {
     if (is.null(g) || g == "") return(NULL)
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok || !"auc" %in% names(b) || !"mutations" %in% names(b)) return(NULL)
-    subset <- input$subset
-    if (is.null(subset) || subset == "All") subset <- "de_novo"
-    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
-    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    subset <- input$gene_summary_drug_subset
+    if (is.null(subset) || subset == "") subset <- "de_novo"
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     base_genes <- gene_to_beataml_bases(g)
     mut_samples <- unique(b$mutations$Sample[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed])
@@ -3962,10 +3959,8 @@ server <- function(input, output, session) {
     if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
-    subset <- input$subset
-    if (is.null(subset) || subset == "All") subset <- "de_novo"
-    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
-    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    subset <- input$gene_summary_drug_subset
+    if (is.null(subset) || subset == "") subset <- "de_novo"
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     base_genes <- gene_to_beataml_bases(g)
     mut_samples <- unique(b$mutations$Sample[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed])
@@ -4015,10 +4010,8 @@ server <- function(input, output, session) {
     if (length(inhibitors) > 24) inhibitors <- head(inhibitors, 24)
     b <- beataml_for_drug()
     if (is.null(b) || !b$ok) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void())
-    subset <- input$subset
-    if (is.null(subset) || subset == "All") subset <- "de_novo"
-    subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
-    subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+    subset <- input$gene_summary_drug_subset
+    if (is.null(subset) || subset == "") subset <- "de_novo"
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     scatter_list <- list()
     trend_list <- list()
@@ -4337,8 +4330,7 @@ server <- function(input, output, session) {
       sub <- sub[order(sub$p_value), , drop = FALSE]; inhibitors <- unique(sub$Inhibitor)
       if (length(inhibitors) > 24) inhibitors <- head(inhibitors, 24)
       b <- beataml_for_drug(); if (is.null(b) || !b$ok) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
-      subset <- input$subset; if (is.null(subset) || subset == "All") subset <- "de_novo"
-      subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other"); subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
+      subset <- input$gene_summary_drug_subset; if (is.null(subset) || subset == "") subset <- "de_novo"
       allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
       scatter_list <- list()
       for (inh in inhibitors) {
