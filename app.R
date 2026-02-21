@@ -743,42 +743,43 @@ ui <- fluidPage(
         )
       )
     ),
-    tabPanel("Meta AML4", value = "meta_aml4"),
-    # tabPanel("Benard et al. (2021)", value = "analyses"),  # Commented out for simplified deploy; re-enable with Benard data load at top of app
-    conditionalPanel(
-      condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
-      sidebarLayout(
-        sidebarPanel(
-          width = 2,
-          h4("Filter analyses by the following:"),
-          selectInput("subset", "AML Subset:", 
-            choices = c("All", "De novo", "Secondary", "Relapse", "Therapy", "Other"), selected = "De novo"),
-          selectInput("cohort", "Cohort:", 
-            choices = local({
-              coh <- c("All", sort(unique(as.character(na.omit(final_data_matrix$Cohort)))))
-              coh[coh == "Beat_AML"] <- "Beat AML"
-              coh
-            }), selected = "All"),
-          selectInput("karyotype", "Karyotype:", 
-            choices = c("All", "Complex", "Normal", "Other", "Unknown"), selected = "All"),
-          sliderInput("min_gene_pct", "Min. gene frequency (% of samples):", min = 1, max = 100, value = 5, step = 1),
-          conditionalPanel(
-            condition = "input.main_nav === 'meta_aml4'",
-            hr(),
-            p(strong("Only interested in a specific gene?")),
-            wellPanel(
-              h5("Summarize all associations for a single gene:"),
-              selectInput("gene_summary", NULL, choices = c("Select gene..." = ""), selected = "")
+    tabPanel("Meta AML4", value = "meta_aml4",
+      conditionalPanel(
+        condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
+        sidebarLayout(
+          sidebarPanel(
+            width = 2,
+            h4("Filter analyses by the following:"),
+            selectInput("subset", "AML Subset:", 
+              choices = c("All", "De novo", "Secondary", "Relapse", "Therapy", "Other"), selected = "De novo"),
+            selectInput("cohort", "Cohort:", 
+              choices = local({
+                coh <- c("All", sort(unique(as.character(na.omit(final_data_matrix$Cohort)))))
+                coh[coh == "Beat_AML"] <- "Beat AML"
+                coh
+              }), selected = "All"),
+            selectInput("karyotype", "Karyotype:", 
+              choices = c("All", "Complex", "Normal", "Other", "Unknown"), selected = "All"),
+            sliderInput("min_gene_pct", "Min. gene frequency (% of samples):", min = 1, max = 100, value = 5, step = 1),
+            conditionalPanel(
+              condition = "input.main_nav === 'meta_aml4'",
+              hr(),
+              p(strong("Only interested in a specific gene?")),
+              wellPanel(
+                h5("Summarize all associations for a single gene:"),
+                selectInput("gene_summary", NULL, choices = c("Select gene..." = ""), selected = "")
+              )
             )
+          ),
+          mainPanel(
+            width = 10,
+            uiOutput("meta4_fallback_banner"),
+            uiOutput("main_tabs_ui")
           )
-        ),
-        mainPanel(
-          width = 10,
-          uiOutput("meta4_fallback_banner"),
-          uiOutput("main_tabs_ui")
         )
+      )
     )
-  )
+    # tabPanel("Benard et al. (2021)", value = "analyses"),  # Commented out for simplified deploy; re-enable with Benard data load at top of app
   )
 )
 
@@ -1975,11 +1976,11 @@ server <- function(input, output, session) {
 
   output$survival_table <- renderDT({
     df <- forest_data()
-    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), n_mut = integer(), n_wt = integer(), HR_CI = character(), p_value = character(), p_adj = character()), options = list(pageLength = 10), rownames = FALSE))
+    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), n_mut = integer(), n_wt = integer(), HR_CI = character(), p_value = character(), p_adj = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
     df$p_value <- format_pval_display(df$p)
     df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
-    datatable(df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj")], options = list(pageLength = 10), rownames = FALSE)
+    datatable(df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
   })
 
   output$download_forest_plot <- downloadHandler(
@@ -2204,7 +2205,7 @@ server <- function(input, output, session) {
   output$cooccurrence_table <- renderDT({
     input$min_gene_pct  # Re-render when gene frequency filter changes (display only)
     cooc <- cooccurrence_data()
-    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10), rownames = FALSE))
+    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     keep_genes <- filtered_genes()
     # Filter pairs to those where both genes pass min. gene frequency (for display only)
     if (length(keep_genes) > 0) {
@@ -2212,13 +2213,13 @@ server <- function(input, output, session) {
     } else {
       df <- cooc$pairs
     }
-    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10), rownames = FALSE))
+    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     df$pair <- paste(df$gene1, "+", df$gene2)
     df$odds_ratio <- round(df$odds_ratio, 2)
     df$p <- format_pval_display(df$p)
     df$q <- format_pval_display(df$q)
     df <- df[order(-df$n_cooccur), , drop = FALSE]
-    datatable(df[, c("pair", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 25), rownames = FALSE)
+    datatable(df[, c("pair", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
   })
 
   # Figure 2: Co-occurrence & Prognosis (de novo)
@@ -2922,18 +2923,18 @@ server <- function(input, output, session) {
   output$drug_mut_wt_summary_table <- renderDT({
     input$drug_subset
     b <- beataml_for_drug()
-    if (is.null(b) || !b$ok) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    if (is.null(b) || !b$ok) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     mut_wt <- drug_mut_wt_all()
-    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     # Filter to q < 0.1 (same as heatmap)
     if ("q_value" %in% colnames(mut_wt)) {
       mut_wt <- mut_wt[!is.na(mut_wt$q_value) & mut_wt$q_value < 0.1, , drop = FALSE]
     } else {
       mut_wt <- mut_wt[!is.na(mut_wt$p_value) & mut_wt$p_value < 0.05, , drop = FALSE]
     }
-    if (nrow(mut_wt) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    if (nrow(mut_wt) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     # Compute mean AUC for mut and WT groups
     auc_wide <- b$auc[b$auc$Sample %in% allowed, , drop = FALSE]
     mut_wide <- b$mutations[b$mutations$Sample %in% allowed, , drop = FALSE]
@@ -2966,7 +2967,7 @@ server <- function(input, output, session) {
       stringsAsFactors = FALSE
     )
     if (ncol(df) == 10 && "q value" %in% names(df) && all(df$`q value` == "")) df$`q value` <- NULL
-    datatable(df, filter = "top", options = list(pageLength = 15, scrollX = TRUE), rownames = FALSE)
+    datatable(df, filter = "top", options = list(pageLength = 10000, lengthChange = FALSE, scrollX = TRUE), rownames = FALSE)
   })
 
   output$drug_mut_wt_heatmap <- renderPlot({
@@ -3058,7 +3059,7 @@ server <- function(input, output, session) {
 
   output$drug_correlation_table <- renderDT({
     corr <- drug_correlations()
-    if (is.null(corr) || nrow(corr) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 15)))
+    if (is.null(corr) || nrow(corr) == 0) return(datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 10000, lengthChange = FALSE)))
     cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "LOOCV_MSE_sd", "n", "VAF_range", "AUC_range")
     cols <- cols[cols %in% colnames(corr)]
     df <- corr[order(corr$p_value), cols, drop = FALSE]
@@ -3068,7 +3069,7 @@ server <- function(input, output, session) {
     if ("p_value" %in% colnames(df)) df$p_value <- format_pval_display(df$p_value)
     if ("q_value" %in% colnames(df)) df$q_value <- format_pval_display(df$q_value)
     gc()
-    datatable(df, filter = "top", options = list(pageLength = 15))
+    datatable(df, filter = "top", options = list(pageLength = 10000, lengthChange = FALSE))
   })
 
   output$drug_loo_heatmap <- renderPlot({
@@ -3419,45 +3420,54 @@ server <- function(input, output, session) {
             plotOutput("gene_summary_comut_heatmap", height = 442)))
         ),
         fluidRow(
-          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", fluidRow(column(8, h4("Pairwise co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut2_plot", "Download plot")))), selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)), plotOutput("gene_summary_comut2_plot", height = 500)))),
-          column(6, div(style = "height: 700px;", wellPanel(style = "height: 100%;", fluidRow(column(8, h4("Triple co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut3_plot", "Download plot")))), fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))), div(style = "padding-left: 19px; padding-right: 19px;", plotOutput("gene_summary_comut3_plot", height = 520))))))
+          column(6, div(style = "min-height: 720px;", wellPanel(style = "height: 100%; box-sizing: border-box; min-height: 720px;",
+            fluidRow(column(8, h4("Pairwise co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut2_plot", "Download plot")))),
+            selectInput("gene_summary_gene2", "Second gene:", choices = c("Select..." = "", genes_other)),
+            plotOutput("gene_summary_comut2_plot", height = 600)))),
+          column(6, div(style = "min-height: 720px;", wellPanel(style = "height: 100%; box-sizing: border-box; min-height: 720px;",
+            fluidRow(column(8, h4("Triple co-mutation survival")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut3_plot", "Download plot")))),
+            fluidRow(column(6, selectInput("gene_summary_gene3a", "Second gene:", choices = c("Select..." = "", genes_other))), column(6, selectInput("gene_summary_gene3b", "Third gene:", choices = c("Select..." = "", genes_other))),
+            plotOutput("gene_summary_comut3_plot", height = 600)))))
         )
       ),
       vaf = fluidRow(
         column(6, wellPanel(
           fluidRow(column(8, h4("VAF distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_plot", "Download plot")))),
-          p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Variant allele frequency (%) per mutation; one bar per mutation."),
+          p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Variant allele frequency (not copy number corrected)"),
           plotOutput("gene_summary_vaf_plot", height = 350))),
         column(6, wellPanel(
           fluidRow(column(8, h4("VAF and survival (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_survival_plot", "Download plot")))),
           p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = high VAF; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = low VAF (MaxStat optimal cutpoint)."),
           plotOutput("gene_summary_vaf_survival_plot", height = 350)))
       ),
-      drug = wellPanel(
-        style = "background-color: #e9ecef;",
-        h4("Drug sensitivity (Beat AML)"),
-        p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = sensitive (mut lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = resistant (mut higher AUC). Statistics summaries below."),
-        fluidRow(
-          column(6, wellPanel(
-            fluidRow(column(8, h5("Mut vs WT Inhibitor Sensitivity")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_volcano", "Download plot")))),
-            p(style = "font-size: 10px; color: #666; margin-bottom: 4px;", "Volcano: points above dashed line = p < 0.05. Left = sensitive; right = resistant."),
-            plotOutput("gene_summary_drug_volcano", height = 400))),
-          column(6, wellPanel(
-            fluidRow(column(8, h5("Mutation VAF vs Inhibitor Sensitivity")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_dotplot", "Download plot")))),
-            p(style = "font-size: 10px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative VAF–AUC; ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive. One facet per inhibitor (p < 0.05)."),
-            plotOutput("gene_summary_drug_dotplot", height = 400)))
-        ),
-        fluidRow(
-          column(6, wellPanel(
-            fluidRow(column(8, h5("Mut vs WT Results Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_mut_wt_table", "Download table")))),
-            p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). All gene–inhibitor pairs with ≥5 mut samples (filtered subset)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
-            div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_mut_wt_table")))),
-          column(6, wellPanel(
-            fluidRow(column(8, h5("VAF–AUC correlations Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_table", "Download table")))),
-            div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_table"))))
+      drug = (tagList(
+        wellPanel(
+          style = "background-color: #e9ecef;",
+          h4("Drug sensitivity (Beat AML)"),
+          p(style = "font-size: 14px; color: #333; margin-bottom: 8px;", "Associations between mutations and drug sensitivity were analysed using the Beat AML database (", tags$a("here", href = "https://biodev.github.io/BeatAML2/", target = "_blank"), ")."),
+          p(style = "font-size: 12px; color: #555; margin-bottom: 8px;",
+            strong("Mut vs WT:"), " Gene–inhibitor pairs included if there were ≥5 mutated samples (and ≥5 WT) with AUC data in the selected cohort. Statistical test: two-sample t-test (mutant vs WT mean AUC); p-values and FDR (Benjamini–Hochberg) for resistance/sensitivity trend.",
+            br(),
+            strong("VAF vs AUC:"), " Gene–inhibitor pairs included if there were ≥5 samples with both VAF and AUC, and VAF range ≥25% and AUC range ≥75. Linear regression (AUC ~ VAF) was used to test the association; p-value and R² from the slope. Leave-one-out cross-validation (LOOCV) RMSE is reported as a check for overfitting. FDR (Benjamini–Hochberg) applied for multiple testing."),
+          fluidRow(
+            column(6, wellPanel(
+              fluidRow(column(8, h5("Mut vs WT Inhibitor Sensitivity")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_volcano", "Download plot")))),
+              p(style = "font-size: 10px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = sensitive (mut lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = resistant (mut higher AUC)."),
+              plotOutput("gene_summary_drug_volcano", height = 400))),
+            column(6, wellPanel(
+              fluidRow(column(8, h5("Mutation VAF vs Inhibitor Sensitivity")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_dotplot", "Download plot")))),
+              p(style = "font-size: 10px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative VAF–AUC slope (sensitive trend); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (resistance trend)."),
+              plotOutput("gene_summary_drug_dotplot", height = 400)))),
+          fluidRow(
+            column(6, wellPanel(style = "min-height: 460px;",
+              fluidRow(column(8, h5("Mut vs WT Results Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_mut_wt_table", "Download table")))),
+              div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_mut_wt_table")))),
+            column(6, wellPanel(style = "min-height: 460px;",
+              fluidRow(column(8, h5("VAF–AUC correlations Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_drug_table", "Download table")))),
+              div(style = "height: 350px; overflow-y: auto;", DTOutput("gene_summary_drug_table")))))
         )
-      ),
-      NULL
+      )),
+    NULL
     )
   })
 
@@ -3929,7 +3939,11 @@ server <- function(input, output, session) {
       scale_size_continuous(name = "N (mut)", range = c(2, 10)) +
       labs(x = "Mean AUC (mut) - Mean AUC (WT)", y = "-log10(p)", title = paste(g, ": Mut vs WT drug AUC")) +
       theme_minimal(base_size = 12) +
-      theme(legend.position = "top")
+      theme(legend.position = "right") +
+      guides(
+        color = guide_legend(ncol = 1, override.aes = list(size = 5)),
+        size = guide_legend(ncol = 1)
+      )
     if (nrow(df_label) > 0) {
       if (has_ggrepel) {
         p <- p + ggrepel::geom_label_repel(data = df_label, aes(x = delta_AUC_mut_wt, y = neglog10p, label = Inhibitor), size = 5, show.legend = FALSE, max.overlaps = Inf)
@@ -3943,11 +3957,11 @@ server <- function(input, output, session) {
 
   output$gene_summary_drug_mut_wt_table <- renderDT({
     g <- input$gene_summary
-    if (is.null(g) || g == "") return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    if (is.null(g) || g == "") return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     mut_wt <- gene_summary_drug_mut_wt()
-    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    if (is.null(mut_wt) || nrow(mut_wt) == 0) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     b <- beataml_for_drug()
-    if (is.null(b) || !b$ok) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 15), rownames = FALSE))
+    if (is.null(b) || !b$ok) return(datatable(data.frame(Gene = character(), Inhibitor = character(), `n mut` = integer(), `n WT` = integer(), `Mean Mut AUC` = numeric(), `Mean WT AUC` = numeric(), `Delta AUC` = numeric(), `p value` = character(), `q value` = character(), `Resistance Trend` = character(), stringsAsFactors = FALSE), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     subset <- input$subset
     if (is.null(subset) || subset == "All") subset <- "de_novo"
     subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
@@ -3982,7 +3996,7 @@ server <- function(input, output, session) {
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
-    datatable(df, filter = "top", options = list(pageLength = 15, scrollX = TRUE), rownames = FALSE)
+    datatable(df, options = list(pageLength = 10000, lengthChange = FALSE, scrollX = TRUE), rownames = FALSE)
   })
 
   output$gene_summary_drug_dotplot <- renderPlot({
@@ -4059,7 +4073,7 @@ server <- function(input, output, session) {
   })
 
   output$gene_summary_drug_table <- renderDT({
-    empty_drug <- datatable(data.frame(Inhibitor = character(), Gene = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 10))
+    empty_drug <- datatable(data.frame(Gene = character(), Inhibitor = character(), Direction = character(), R_squared = numeric(), p_value = character(), q_value = character(), LOOCV_RMSE = numeric(), n = integer()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
     g <- input$gene_summary
     if (is.null(g) || g == "") return(empty_drug)
     corr <- gene_summary_drug_correlations_gene()
@@ -4068,7 +4082,7 @@ server <- function(input, output, session) {
     base_genes <- gene_to_beataml_bases(g)
     sub <- corr[corr$Gene %in% base_genes, , drop = FALSE]
     if (nrow(sub) == 0) return(empty_drug)
-    cols <- c("Inhibitor", "Gene", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "n", "VAF_range", "AUC_range")
+    cols <- c("Gene", "Inhibitor", "Direction", "R_squared", "p_value", "q_value", "LOOCV_RMSE", "LOOCV_MSE", "n", "VAF_range", "AUC_range")
     cols <- cols[cols %in% colnames(sub)]
     df <- sub[order(sub$p_value), cols, drop = FALSE]
     for (nm in c("R_squared", "LOOCV_RMSE", "LOOCV_MSE", "VAF_range", "AUC_range")) {
@@ -4077,7 +4091,7 @@ server <- function(input, output, session) {
     if ("p_value" %in% colnames(df)) df$p_value <- format_pval_display(df$p_value)
     if ("q_value" %in% colnames(df)) df$q_value <- format_pval_display(df$q_value)
     gc()
-    datatable(df, options = list(pageLength = 10))
+    datatable(df, options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
   })
 
   output$gene_summary_drug_loo_heatmap <- renderPlot({
@@ -4374,7 +4388,7 @@ server <- function(input, output, session) {
     for (nm in c("VAF", "Age", "Time_to_OS", "Censor")) {
       if (nm %in% colnames(df) && is.numeric(df[[nm]])) df[[nm]] <- round(df[[nm]], 2)
     }
-    datatable(df, filter = "top", options = list(pageLength = 25, scrollX = TRUE))
+    datatable(df, filter = "top", options = list(pageLength = 10000, lengthChange = FALSE, scrollX = TRUE))
   })
 }
 
