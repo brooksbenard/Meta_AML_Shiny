@@ -523,178 +523,69 @@ ui <- fluidPage(
     (function() {
       var overlayShownAt = 0;
       var minOverlayMs = 1500;
-      var currentTab = null;
-      var tabLoaded = {};
-      var renderedOutputs = {};
       var hideTimeout = null;
       var delayedShowTimeout = null;
-      var overlayVisible = false;
-      var subTabOutputCount = 0;
-      var subTabMaxWait = null;
       var maxOverlayTimeout = null;
-      var mainTabs = ['analyses', 'meta_aml4'];
+      var overlayVisible = false;
+      var currentMainNav = 'about';
       var LOADING_DELAY_MS = 2000;
-      var MAX_OVERLAY_MS = 30000;  // Auto-hide after 30 seconds max
-      
-      // Mark About tab as always loaded
-      tabLoaded['about'] = true;
-      
+      var MAX_OVERLAY_MS = 30000;
+
       function showOverlay() {
+        if (overlayVisible) return;
         overlayVisible = true;
         overlayShownAt = Date.now();
-        subTabOutputCount = 0;
-        if (hideTimeout) {
-          clearTimeout(hideTimeout);
-          hideTimeout = null;
-        }
-        if (subTabMaxWait) {
-          clearTimeout(subTabMaxWait);
-          subTabMaxWait = null;
-        }
-        if (maxOverlayTimeout) {
-          clearTimeout(maxOverlayTimeout);
-          maxOverlayTimeout = null;
-        }
-        $('#data-loading-overlay').css({'display': 'flex'});
-        // Safety: auto-hide after MAX_OVERLAY_MS
+        if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null; }
+        if (maxOverlayTimeout) { clearTimeout(maxOverlayTimeout); maxOverlayTimeout = null; }
+        var el = document.getElementById('data-loading-overlay');
+        if (el) el.style.display = 'flex';
         maxOverlayTimeout = setTimeout(function() {
-          if (overlayVisible) {
-            maxOverlayTimeout = null;
-            hideOverlay();
-          }
+          maxOverlayTimeout = null;
+          if (overlayVisible) hideOverlay();
         }, MAX_OVERLAY_MS);
       }
-      
+
       function hideOverlay() {
+        if (!overlayVisible) return;
         overlayVisible = false;
+        if (maxOverlayTimeout) { clearTimeout(maxOverlayTimeout); maxOverlayTimeout = null; }
         var elapsed = Date.now() - overlayShownAt;
         var wait = Math.max(0, minOverlayMs - elapsed);
-        if (currentTab) tabLoaded[currentTab] = true;
-        if (maxOverlayTimeout) {
-          clearTimeout(maxOverlayTimeout);
-          maxOverlayTimeout = null;
-        }
-        hideTimeout = setTimeout(function() { 
-          $('#data-loading-overlay').hide(); 
+        hideTimeout = setTimeout(function() {
           hideTimeout = null;
+          $('#data-loading-overlay').hide();
         }, wait);
       }
-      
-      function scheduleOverlay() {
-        // Don't schedule overlay for About tab or if tab is already loaded
-        if (!currentTab || currentTab === 'about' || mainTabs.indexOf(currentTab) === -1) return;
-        if (tabLoaded[currentTab] === true) return;
-        if (delayedShowTimeout) clearTimeout(delayedShowTimeout);
-        delayedShowTimeout = setTimeout(function() {
-          delayedShowTimeout = null;
-          // Double-check conditions before showing
-          if (currentTab && currentTab !== 'about' && mainTabs.indexOf(currentTab) !== -1 && (tabLoaded[currentTab] === undefined || tabLoaded[currentTab] === false)) {
-            showOverlay();
-          }
-        }, LOADING_DELAY_MS);
+
+      function cancelPending() {
+        if (delayedShowTimeout) { clearTimeout(delayedShowTimeout); delayedShowTimeout = null; }
       }
-      
-      function onLoadingComplete() {
-        if (delayedShowTimeout) {
-          clearTimeout(delayedShowTimeout);
-          delayedShowTimeout = null;
-        }
-        if (currentTab) tabLoaded[currentTab] = true;
-        if (overlayVisible) hideOverlay();
-      }
-      
-      $(document).on('click', '[data-value]', function() {
-        var val = $(this).attr('data-value');
-        if (!val || val === 'about') {
-          currentTab = val;
-          return;
-        }
-        currentTab = val;
-        renderedOutputs = {};
-        subTabOutputCount = 0;
-        if (subTabMaxWait) {
-          clearTimeout(subTabMaxWait);
-          subTabMaxWait = null;
-        }
-        if (mainTabs.indexOf(val) !== -1 && (tabLoaded[val] === undefined || tabLoaded[val] === false)) {
-          scheduleOverlay();
-        } else if (mainTabs.indexOf(val) === -1) {
-          // Sub-tab: auto-complete after 6 seconds if no outputs render
-          subTabMaxWait = setTimeout(function() {
-            if (currentTab === val) {
-              subTabMaxWait = null;
-              onLoadingComplete();
-            }
-          }, 6000);
-        }
-      });
-      
-      Shiny.addCustomMessageHandler('dataReady', function(tab) { 
-        if (tab === currentTab) {
-          tabLoaded[tab] = true;
-        }
-      });
-      
+
       $(document).on('shiny:inputchanged', function(event) {
         if (event.name === 'main_nav') {
-          currentTab = event.value;
-          renderedOutputs = {};
-          subTabOutputCount = 0;
-          if (subTabMaxWait) {
-            clearTimeout(subTabMaxWait);
-            subTabMaxWait = null;
-          }
-          // Only cancel pending overlay when switching to About
-          if (currentTab === 'about') {
-            if (delayedShowTimeout) {
-              clearTimeout(delayedShowTimeout);
-              delayedShowTimeout = null;
-            }
-            tabLoaded['about'] = true;
+          currentMainNav = event.value;
+          if (currentMainNav === 'about') {
+            cancelPending();
             if (overlayVisible) hideOverlay();
-            return;
-          }
-          // For analyses/meta_aml4: always schedule overlay (it will show after 2s if tab not yet loaded)
-          if (mainTabs.indexOf(currentTab) !== -1) {
-            scheduleOverlay();
           }
         }
       });
-      
-      $(document).on('shiny:value', function(event) {
-        if (!currentTab || currentTab === 'about') return;
-        if (mainTabs.indexOf(currentTab) !== -1) {
-          var keyOutputs = ['summary_table', 'cohort_plot'];
-          if (keyOutputs.indexOf(event.name) !== -1) {
-            renderedOutputs[event.name] = true;
-            var allRendered = keyOutputs.every(function(output) {
-              return renderedOutputs[output] === true;
-            });
-            if (allRendered && tabLoaded[currentTab]) {
-              var tabToCheck = currentTab;
-              setTimeout(function() {
-                if (currentTab === tabToCheck) {
-                  onLoadingComplete();
-                }
-              }, 400);
-            }
-          }
-        } else {
-          subTabOutputCount++;
-          if (subTabOutputCount >= 2) {
-            if (subTabMaxWait) {
-              clearTimeout(subTabMaxWait);
-              subTabMaxWait = null;
-            }
-            var tabToCheck = currentTab;
-            setTimeout(function() {
-              if (currentTab === tabToCheck) {
-                onLoadingComplete();
-              }
-            }, 400);
-          }
-        }
+
+      $(document).on('shiny:busy', function() {
+        if (currentMainNav === 'about') return;
+        cancelPending();
+        delayedShowTimeout = setTimeout(function() {
+          delayedShowTimeout = null;
+          showOverlay();
+        }, LOADING_DELAY_MS);
       });
+
+      $(document).on('shiny:idle', function() {
+        cancelPending();
+        if (overlayVisible) hideOverlay();
+      });
+
+      Shiny.addCustomMessageHandler('dataReady', function(tab) {});
     })();
   ")),
   div(class = "app-banner",
@@ -843,7 +734,6 @@ server <- function(input, output, session) {
   output$main_tabs_ui <- renderUI({
     nav <- input$main_nav
     if (identical(nav, "meta_aml4")) {
-      # Meta AML4: three main tabs — Overview, All Gene Associations (sub-tabs), Single Gene Associations
       df <- filtered_data()
       genes <- filtered_genes()
       gene_choices <- if (length(genes) == 0) {
@@ -869,10 +759,9 @@ server <- function(input, output, session) {
             id = "meta4_all_gene_tabs",
             selected = inner_tab,
             tabPanel("Single mutation", value = "Single",
-              tagList(
               fluidRow(
                 column(12, wellPanel(
-                  fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot"))),
+                  fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot")))),
                   selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
                   p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. Significance: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
                   plotOutput("clinical_plot", height = 400)))
@@ -882,9 +771,8 @@ server <- function(input, output, session) {
                 column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", "Gene:", choices = gene_choices), plotOutput("survival_plot", height = 340), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
               ),
               fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
-              )
             ),
-            tabPanel("Co-mutation",
+            tabPanel("Co-mutation", value = "Co-mutation",
               fluidRow(
                 column(12, wellPanel(
                   h4("OncoPrint: Mutations & Clinical Annotations"),
@@ -910,7 +798,7 @@ server <- function(input, output, session) {
                 ))
               )
             ),
-            tabPanel("VAF",
+            tabPanel("VAF", value = "VAF",
               tabsetPanel(
                 tabPanel("Single Gene",
                   fluidRow(
@@ -935,7 +823,7 @@ server <- function(input, output, session) {
                 )
               )
             ),
-            tabPanel("Drug Sensitivity",
+            tabPanel("Drug Sensitivity", value = "Drug Sensitivity",
               p("Data for mutation and VAF correlations with inhibitor sensitivity from BeatAML2 data.",
                 a("biodev.github.io/BeatAML2", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
               fluidRow(
@@ -957,7 +845,7 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("VAF vs AUC correlations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_summary_dotplot", "Download plot")))),
                   uiOutput("drug_vaf_auc_summary_ui"),
-                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF → lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF → higher AUC). * = q < 0.1 (FDR)."),
+                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF \u2192 lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF \u2192 higher AUC). * = q < 0.1 (FDR)."),
                   plotOutput("drug_summary_dotplot", height = 500),
                   p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
                 ))
@@ -965,21 +853,22 @@ server <- function(input, output, session) {
               fluidRow(
                 column(6, wellPanel(
                   fluidRow(column(8, h4("Individual Mutation and VAF Associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_scatter_plot", "Download plot")))),
-                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF–AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
+                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF\u2013AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
                   p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
                   uiOutput("drug_scatter_selects_ui"),
                   fluidRow(
                     column(6, plotOutput("drug_scatter_boxplot", width = "100%", height = 320)),
                     column(6, plotOutput("drug_scatter_plot", width = "100%", height = 320))
                   )
-                ))),
+                )),
                 column(6, wellPanel(
                   fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
-                  p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF–AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
-                  plotOutput("drug_loo_heatmap", height = 350)))
+                  p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF\u2013AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
+                  plotOutput("drug_loo_heatmap", height = 350)
+                ))
               ),
               fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+                column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) \u2212 mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
                 column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
               )
             )
@@ -990,7 +879,6 @@ server <- function(input, output, session) {
         )
       )
     } else if (identical(nav, "analyses")) {
-      # Benard et al.: Overview, Single mutation associations, Co-mutation, VAF, Drug (Data Table hidden for now)
       df <- filtered_data()
       genes <- filtered_genes()
       gene_choices_analyses <- if (length(genes) == 0) {
@@ -1018,7 +906,7 @@ server <- function(input, output, session) {
         tabPanel("Single mutation associations",
           fluidRow(
             column(12, wellPanel(
-              fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot"))),
+              fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot")))),
               selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
               p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
               plotOutput("clinical_plot", height = 400)))
@@ -1027,7 +915,7 @@ server <- function(input, output, session) {
             column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 400), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
             column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", "Gene:", choices = gene_choices_analyses), plotOutput("survival_plot", height = 340), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
           ),
-          fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
+          fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini\u2013Hochberg)."), DTOutput("survival_table"))))
         ),
         tabPanel("Co-mutation Associations",
           fluidRow(
@@ -1062,7 +950,7 @@ server <- function(input, output, session) {
                 column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 450))),
                 column(6, wellPanel(
                   h4("VAF and Survival: Hazard Ratios (MaxStat)"),
-                  p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with ≥20 mutated samples with VAF and survival only.")),
+                  p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with \u226520 mutated samples with VAF and survival only.")),
                   plotOutput("vaf_survival_plot", height = 450)))
               ),
               fluidRow(
@@ -1091,7 +979,7 @@ server <- function(input, output, session) {
           ),
           fluidRow(
             column(12, wellPanel(
-              fluidRow(column(8, h4("Mut vs WT AUC (≥5 mut samples)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_heatmap", "Download plot")))),
+              fluidRow(column(8, h4("Mut vs WT AUC (\u22655 mut samples)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_heatmap", "Download plot")))),
               uiOutput("drug_mut_wt_summary_ui"),
               p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
               p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
@@ -1102,7 +990,7 @@ server <- function(input, output, session) {
             column(12, wellPanel(
               fluidRow(column(8, h4("VAF vs AUC correlations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_summary_dotplot", "Download plot")))),
               uiOutput("drug_vaf_auc_summary_ui"),
-              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF → lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF → higher AUC). * = q < 0.1 (FDR)."),
+              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF \u2192 lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF \u2192 higher AUC). * = q < 0.1 (FDR)."),
               plotOutput("drug_summary_dotplot", height = 500),
               p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
             ))
@@ -1110,28 +998,26 @@ server <- function(input, output, session) {
           fluidRow(
             column(6, wellPanel(
               fluidRow(column(8, h4("Individual Mutation and VAF Associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_scatter_plot", "Download plot")))),
-              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF–AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
+              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF\u2013AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
               p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
               uiOutput("drug_scatter_selects_ui"),
               fluidRow(
                 column(6, plotOutput("drug_scatter_boxplot", width = "100%", height = 320)),
                 column(6, plotOutput("drug_scatter_plot", width = "100%", height = 320))
               )
-            ))),
+            )),
             column(6, wellPanel(
               fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
-              p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF–AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
+              p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF\u2013AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
               plotOutput("drug_loo_heatmap", height = 350)))
           ),
           fluidRow(
-            column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) − mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+            column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) \u2212 mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
             column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
           )
         )
-        # Data Table tab hidden for now; re-add tabPanel("Data Table", ...) here to restore
       )
     } else {
-      # Default: empty div when neither tab is active
       div()
     }
   })
@@ -1976,11 +1862,11 @@ server <- function(input, output, session) {
 
   output$survival_table <- renderDT({
     df <- forest_data()
-    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), n_mut = integer(), n_wt = integer(), HR_CI = character(), p_value = character(), p_adj = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
+    if (is.null(df) || nrow(df) == 0) return(datatable(data.frame(Gene = character(), n_mut = integer(), n_wt = integer(), HR_CI = character(), p_value = character(), p_adj = character()), options = list(pageLength = 10000, lengthChange = FALSE, scrollY = "350px", scrollCollapse = TRUE), rownames = FALSE))
     df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
     df$p_value <- format_pval_display(df$p)
     df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
-    datatable(df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
+    datatable(df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj")], options = list(pageLength = 10000, lengthChange = FALSE, scrollY = "350px", scrollCollapse = TRUE), rownames = FALSE)
   })
 
   output$download_forest_plot <- downloadHandler(
@@ -3255,103 +3141,6 @@ server <- function(input, output, session) {
     ))
   })
 
-  # Fetch CIViC (Clinical Interpretation of Variants in Cancer) gene summary
-  # API ref: https://griffithlab.github.io/civic-api-docs/
-  gene_civic_summary_text <- reactive({
-    g <- input$gene_summary
-    if (is.null(g) || g == "") return(NULL)
-    g_base <- gsub("^([A-Z0-9]+)[_-].*$", "\\1", g)
-    if (!grepl("^[A-Z0-9]+$", g_base)) g_base <- g
-    
-    if (!has_httr) return(NULL)
-    
-    extract_description <- function(rec) {
-      if (!is.list(rec)) return(NULL)
-      errs <- rec$errors
-      if (!is.null(errs) && (is.character(errs) && length(errs) > 0 || is.list(errs) && length(errs) > 0)) return(NULL)
-      desc <- rec$description
-      if (is.null(desc) || length(desc) == 0 || trimws(as.character(desc)) == "") return(NULL)
-      as.character(desc)
-    }
-    
-    tryCatch({
-      # 1) Try detail endpoint: GET /api/genes/:symbol?identifier_type=entrez_symbol
-      url <- paste0("https://civicdb.org/api/genes/", utils::URLencode(g_base, reserved = TRUE), "?identifier_type=entrez_symbol")
-      resp <- httr::GET(url, httr::timeout(10), httr::user_agent("Meta-AML-Explorer/1.0"))
-      if (httr::status_code(resp) == 200L) {
-        rec <- httr::content(resp, as = "parsed", type = "application/json")
-        # Response can be single object or array of one
-        if (is.data.frame(rec)) rec <- as.list(rec)
-        if (is.list(rec) && is.null(rec$records)) {
-          desc <- extract_description(rec)
-          if (!is.null(desc)) return(desc)
-        }
-        if (is.list(rec) && identical(names(rec), c("_meta", "records"))) {
-          recs <- rec$records
-          if (length(recs) > 0) {
-            desc <- extract_description(recs[[1]])
-            if (!is.null(desc)) return(desc)
-          }
-        }
-        if (is.vector(rec) && length(rec) > 0 && is.list(rec[[1]])) {
-          desc <- extract_description(rec[[1]])
-          if (!is.null(desc)) return(desc)
-        }
-      }
-      
-      # 2) Fallback: search index (paginated) for gene by name or alias
-      page <- 1
-      count <- 100
-      while (page <= 20) {
-        idx_url <- sprintf("https://civicdb.org/api/genes?count=%d&page=%d", count, page)
-        idx_resp <- httr::GET(idx_url, httr::timeout(10), httr::user_agent("Meta-AML-Explorer/1.0"))
-        if (httr::status_code(idx_resp) != 200L) break
-        idx <- httr::content(idx_resp, as = "parsed", type = "application/json")
-        recs <- idx$records
-        if (length(recs) == 0) break
-        for (r in recs) {
-          name_ok <- identical(toupper(as.character(r$name)), toupper(g_base))
-          aliases <- r$aliases
-          if (is.null(aliases)) aliases <- character(0)
-          if (!is.character(aliases)) aliases <- as.character(aliases)
-          alias_ok <- toupper(g_base) %in% toupper(aliases)
-          if (name_ok || alias_ok) {
-            desc <- extract_description(r)
-            if (!is.null(desc)) return(desc)
-            # Fetch full detail by CIViC id for description if index record has no description
-            detail_url <- paste0("https://civicdb.org/api/genes/", r$id, "?identifier_type=civic_id")
-            d_resp <- httr::GET(detail_url, httr::timeout(8), httr::user_agent("Meta-AML-Explorer/1.0"))
-            if (httr::status_code(d_resp) == 200L) {
-              det <- httr::content(d_resp, as = "parsed", type = "application/json")
-              desc <- extract_description(det)
-              if (!is.null(desc)) return(desc)
-            }
-            break
-          }
-        }
-        meta <- idx$`_meta`
-        next_link <- if (is.list(meta$links)) meta$links[["next"]] else NULL
-        if (is.null(next_link) || identical(next_link, "")) break
-        page <- page + 1
-      }
-      return(NULL)
-    }, error = function(e) {
-      return(NULL)
-    })
-  })
-
-  output$gene_civic_summary <- renderUI({
-    summary_text <- gene_civic_summary_text()
-    if (is.null(summary_text) || summary_text == "") {
-      return(NULL)
-    }
-    return(div(
-      style = "margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-left: 3px solid #0066cc;",
-      p(strong("CIViC Summary:"), " ", a("(Clinical Interpretation of Variants in Cancer)", href = "https://civicdb.org/", target = "_blank", style = "font-size: 11px; color: #0066cc;"), style = "margin-bottom: 5px;"),
-      p(summary_text, style = "font-size: 13px; line-height: 1.5; margin: 0;")
-    ))
-  })
-
   output$gene_summary_ui <- renderUI({
     if (!input$main_nav %in% c("analyses", "meta_aml4")) return(NULL)
     g <- input$gene_summary
@@ -3363,8 +3152,7 @@ server <- function(input, output, session) {
     tagList(
       wellPanel(
         h3("All associations for: ", g),
-        uiOutput("gene_ncbi_summary"),
-        uiOutput("gene_civic_summary")
+        uiOutput("gene_ncbi_summary")
       ),
       tabsetPanel(
         id = "gene_summary_sub_tabs",
