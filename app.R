@@ -763,38 +763,41 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot")))),
                   selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
-                  p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. Significance: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. Significance: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
                   plotOutput("clinical_plot", height = 400)))
               ),
               fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
-                column(6, wellPanel(fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", NULL, choices = gene_choices), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
+                column(6, wellPanel(fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 500), p(style = "font-size: 13px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+                column(6, wellPanel(fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", NULL, choices = gene_choices), plotOutput("survival_plot", height = 500), p(style = "font-size: 13px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
               ),
-              fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
+              fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
             ),
             tabPanel("Co-mutation", value = "Co-mutation",
               fluidRow(
                 column(12, wellPanel(
-                  fluidRow(column(8, h4("OncoPrint: Mutations & Clinical Annotations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
+                  fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
                   plotOutput("oncoprint_plot", height = 500)
                 ))
               ),
               fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
-                column(6, wellPanel(fluidRow(column(8, h4("Top Co-occurring Pairs")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+                column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
               ),
               fluidRow(
-                column(4, wellPanel(
-                  h4("Gene Selection"),
-                  radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
-                  selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
-                  selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
-                  conditionalPanel(condition = "input.comut_n == 3",
-                    selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
-                )),
-                column(8, wellPanel(
+                column(12, wellPanel(
                   fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
-                  uiOutput("comut_survival_plot_ui")
+                  fluidRow(
+                    column(3, div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
+                      h5(style = "margin-top: 0;", "Gene Selection"),
+                      radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                      selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
+                      selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
+                      conditionalPanel(condition = "input.comut_n == 3",
+                        selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
+                    )),
+                    column(9, uiOutput("comut_survival_plot_ui"))
+                  )
                 ))
               )
             ),
@@ -836,7 +839,7 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("Mut vs WT AUC (≥5 mut samples)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_heatmap", "Download plot")))),
                   uiOutput("drug_mut_wt_summary_ui"),
-                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
                   p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
                   div(style = "margin: 0; padding: 0; line-height: 0;", plotOutput("drug_mut_wt_heatmap", height = 400))
                 ))
@@ -845,15 +848,15 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("VAF vs AUC correlations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_summary_dotplot", "Download plot")))),
                   uiOutput("drug_vaf_auc_summary_ui"),
-                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF \u2192 lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF \u2192 higher AUC). * = q < 0.1 (FDR)."),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF \u2192 lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF \u2192 higher AUC). * = q < 0.1 (FDR)."),
                   plotOutput("drug_summary_dotplot", height = 500),
-                  p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
+                  p(em("* q < 0.1 (FDR)"), style = "font-size: 13px; color: #666;")
                 ))
               ),
               fluidRow(
                 column(6, wellPanel(
                   fluidRow(column(8, h4("Individual Mutation and VAF Associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_scatter_plot", "Download plot")))),
-                  p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF\u2013AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF\u2013AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
                   p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
                   uiOutput("drug_scatter_selects_ui"),
                   fluidRow(
@@ -863,13 +866,13 @@ server <- function(input, output, session) {
                 )),
                 column(6, wellPanel(
                   fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
-                  p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF\u2013AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
+                  p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF\u2013AUC fit."), style = "font-size: 13px; color: #666; margin-bottom: 4px;"),
                   plotOutput("drug_loo_heatmap", height = 350)
                 ))
               ),
               fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) \u2212 mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
-                column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
+                column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) \u2212 mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 13px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+                column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 13px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
               )
             )
           )
@@ -898,7 +901,8 @@ server <- function(input, output, session) {
           ),
           fluidRow(
             column(12, wellPanel(
-              h4("OncoPrint: Mutations & Clinical Annotations"),
+              h4("Oncoprint"),
+              p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
               plotOutput("oncoprint_plot", height = 500)
             ))
           )
@@ -908,38 +912,41 @@ server <- function(input, output, session) {
             column(12, wellPanel(
               fluidRow(column(8, h4("Clinical Variable by Mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clinical_plot", "Download plot")))),
               selectInput("clin_var", "Variable:", choices = c("WBC", "Age", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent")),
-              p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
+              p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
               plotOutput("clinical_plot", height = 400)))
           ),
           fluidRow(
-            column(6, wellPanel(fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
-            column(6, wellPanel(fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", NULL, choices = gene_choices_analyses), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
+            column(6, wellPanel(fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 500), p(style = "font-size: 13px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+            column(6, wellPanel(fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", NULL, choices = gene_choices_analyses), plotOutput("survival_plot", height = 500), p(style = "font-size: 13px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
           ),
-          fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini\u2013Hochberg)."), DTOutput("survival_table"))))
+          fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini\u2013Hochberg)."), DTOutput("survival_table"))))
         ),
         tabPanel("Co-mutation Associations",
           fluidRow(
             column(12, wellPanel(
-              fluidRow(column(8, h4("OncoPrint: Mutations & Clinical Annotations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
+              fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
+              p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
               plotOutput("oncoprint_plot", height = 500)
             ))
           ),
           fluidRow(
-            column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
-            column(6, wellPanel(fluidRow(column(8, h4("Top Co-occurring Pairs")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+            column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+            column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
           ),
           fluidRow(
-            column(4, wellPanel(
-              h4("Gene Selection"),
-              radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
-              selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
-              selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
-              conditionalPanel(condition = "input.comut_n == 3",
-                selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
-            )),
-            column(8, wellPanel(
+            column(12, wellPanel(
               fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
-              uiOutput("comut_survival_plot_ui")
+              fluidRow(
+                column(3, div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
+                  h5(style = "margin-top: 0;", "Gene Selection"),
+                  radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                  selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
+                  selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
+                  conditionalPanel(condition = "input.comut_n == 3",
+                    selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
+                )),
+                column(9, uiOutput("comut_survival_plot_ui"))
+              )
             ))
           )
         ),
@@ -981,7 +988,7 @@ server <- function(input, output, session) {
             column(12, wellPanel(
               fluidRow(column(8, h4("Mut vs WT AUC (\u22655 mut samples)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_heatmap", "Download plot")))),
               uiOutput("drug_mut_wt_summary_ui"),
-              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
+              p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mutated samples more resistant (higher AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutated samples more sensitive (lower AUC)."),
               p(em("Delta AUC = mean AUC (mut) - mean AUC (WT). Only gene-inhibitor pairs with q < 0.1 (FDR) shown."), style = "margin-bottom: 4px;"),
               div(style = "margin: 0; padding: 0; line-height: 0;", plotOutput("drug_mut_wt_heatmap", height = 500))
             ))
@@ -990,15 +997,15 @@ server <- function(input, output, session) {
             column(12, wellPanel(
               fluidRow(column(8, h4("VAF vs AUC correlations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_summary_dotplot", "Download plot")))),
               uiOutput("drug_vaf_auc_summary_ui"),
-              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF \u2192 lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF \u2192 higher AUC). * = q < 0.1 (FDR)."),
+              p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative slope (higher VAF \u2192 lower AUC); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive slope (higher VAF \u2192 higher AUC). * = q < 0.1 (FDR)."),
               plotOutput("drug_summary_dotplot", height = 500),
-              p(em("* q < 0.1 (FDR)"), style = "font-size: 11px; color: #666;")
+              p(em("* q < 0.1 (FDR)"), style = "font-size: 13px; color: #666;")
             ))
           ),
           fluidRow(
             column(6, wellPanel(
               fluidRow(column(8, h4("Individual Mutation and VAF Associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_scatter_plot", "Download plot")))),
-              p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF\u2013AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
+              p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Boxplot: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mut more resistant; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = mut more sensitive. Scatter: ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = positive VAF\u2013AUC; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = negative."),
               p(em("Gene and inhibitor options match the subset used in Mut vs WT and VAF vs AUC analyses above.")),
               uiOutput("drug_scatter_selects_ui"),
               fluidRow(
@@ -1008,12 +1015,12 @@ server <- function(input, output, session) {
             )),
             column(6, wellPanel(
               fluidRow(column(8, h4("Leave-One-Out Cross Validation for VAF vs AUC analysis")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_loo_heatmap", "Download plot")))),
-              p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF\u2013AUC fit."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"),
+              p(em("RMSE = leave-one-out prediction error in AUC units. Lower RMSE = better VAF\u2013AUC fit."), style = "font-size: 13px; color: #666; margin-bottom: 4px;"),
               plotOutput("drug_loo_heatmap", height = 350)))
           ),
           fluidRow(
-            column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) \u2212 mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
-            column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 11px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
+            column(6, wellPanel(fluidRow(column(8, h4("Mut vs WT Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_mut_wt_table", "Download table")))), p(em("Delta AUC = mean AUC (mut) \u2212 mean AUC (WT). q < 0.1 (FDR) shown."), style = "font-size: 13px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_mut_wt_summary_table")))),
+            column(6, wellPanel(fluidRow(column(8, h4("VAF vs AUC Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_drug_correlation_table", "Download table")))), p(em("LOOCV RMSE = leave-one-out prediction error in AUC units (overfitting check)."), style = "font-size: 13px; color: #666; margin-bottom: 4px;"), div(style = "height: 350px; overflow-y: auto;", DTOutput("drug_correlation_table"))))
           )
         )
       )
@@ -3265,16 +3272,16 @@ server <- function(input, output, session) {
       clinical = tagList(
         wellPanel(
           fluidRow(column(8, h4("Clinical associations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_clinical_plot", "Download plot")))),
-          p(style = "font-size: 11px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
+          p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = WT. *** p<0.001, ** p<0.01, * p<0.05, ns = not significant (Wilcoxon)."),
           plotOutput("gene_summary_clinical_plot", height = 260)),
         fluidRow(
           column(6, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
             fluidRow(column(8, h4("Mutation distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_lollipop_plot", "Download plot")))),
-            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Protein positions with mutations; height = count of mutations at that position."),
+            p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Protein positions with mutations; height = count of mutations at that position."),
             plotOutput("gene_summary_lollipop_plot", height = 460))),
           column(6, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
             fluidRow(column(8, h4("Kaplan-Meier: Single gene")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_survival", "Download plot")))),
-            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT."),
+            p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT."),
             plotOutput("gene_summary_survival", height = 460)))
         )
       ),
@@ -3282,12 +3289,12 @@ server <- function(input, output, session) {
         fluidRow(
           column(9, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
             fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_oncoprint", label = "", icon = icon("download"))))),
-            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", if (is.null(g) || g == "") "Co-occurring mutations in samples with this gene mutated." else paste0("Co-occurring mutations in samples with ", g, " mutated.")),
+            p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", if (is.null(g) || g == "") "Co-occurring mutations in samples with this gene mutated." else paste0("Co-occurring mutations in samples with ", g, " mutated.")),
             plotOutput("gene_summary_oncoprint", height = 460))),
           column(3, wellPanel(style = "min-height: 560px; height: 560px; overflow: hidden; box-sizing: border-box;",
             fluidRow(column(8, h4("Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_comut_heatmap", label = "", icon = icon("download"))))),
-            p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring."),
-            p(em("Calculated from all samples in the filtered subset, not just those included in the oncoprint."), style = "font-size: 11px; color: #666; margin-bottom: 8px;"),
+            p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive; ", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring."),
+            p(em("Calculated from all samples in the filtered subset, not just those included in the oncoprint."), style = "font-size: 13px; color: #666; margin-bottom: 8px;"),
             plotOutput("gene_summary_comut_heatmap", height = 442)))
         ),
         fluidRow(
@@ -3304,11 +3311,11 @@ server <- function(input, output, session) {
       vaf = fluidRow(
         column(6, wellPanel(
           fluidRow(column(8, h4("VAF distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_plot", "Download plot")))),
-          p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Variant allele frequency (not copy number corrected)"),
+          p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Variant allele frequency (not copy number corrected)"),
           plotOutput("gene_summary_vaf_plot", height = 350))),
         column(6, wellPanel(
           fluidRow(column(8, h4("VAF and survival (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_survival_plot", "Download plot")))),
-          p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = high VAF; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = low VAF (MaxStat optimal cutpoint)."),
+          p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = high VAF; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = low VAF (MaxStat optimal cutpoint)."),
           plotOutput("gene_summary_vaf_survival_plot", height = 350)))
       ),
       drug = (tagList(
