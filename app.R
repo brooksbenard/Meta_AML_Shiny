@@ -701,7 +701,7 @@ server <- function(input, output, session) {
     out <- character(length(p))
     for (i in seq_along(p)) {
       if (is.na(p[i])) { out[i] <- NA_character_; next }
-      out[i] <- format(round(p[i], 4), scientific = FALSE, drop0trailing = TRUE)
+      out[i] <- format(p[i], scientific = TRUE, drop0trailing = TRUE)
     }
     out
   }
@@ -767,21 +767,21 @@ server <- function(input, output, session) {
                   plotOutput("clinical_plot", height = 400)))
               ),
               fluidRow(
-                column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 400), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
-                column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", "Gene:", choices = gene_choices), plotOutput("survival_plot", height = 340), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
+                column(6, wellPanel(fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+                column(6, wellPanel(fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", NULL, choices = gene_choices), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
               ),
               fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
             ),
             tabPanel("Co-mutation", value = "Co-mutation",
               fluidRow(
                 column(12, wellPanel(
-                  h4("OncoPrint: Mutations & Clinical Annotations"),
+                  fluidRow(column(8, h4("OncoPrint: Mutations & Clinical Annotations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
                   plotOutput("oncoprint_plot", height = 500)
                 ))
               ),
               fluidRow(
-                column(6, wellPanel(h4("Co-mutation Odds Ratio"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
-                column(6, wellPanel(h4("Top Co-occurring Pairs"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+                column(6, wellPanel(fluidRow(column(8, h4("Top Co-occurring Pairs")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
               ),
               fluidRow(
                 column(4, wellPanel(
@@ -793,7 +793,7 @@ server <- function(input, output, session) {
                     selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
                 )),
                 column(8, wellPanel(
-                  h4("Kaplan-Meier by Co-mutation Status"),
+                  fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
                   uiOutput("comut_survival_plot_ui")
                 ))
               )
@@ -882,9 +882,9 @@ server <- function(input, output, session) {
       df <- filtered_data()
       genes <- filtered_genes()
       gene_choices_analyses <- if (length(genes) == 0) {
-        c("Select..." = "")
+        c("Select Gene..." = "")
       } else {
-        c("Select..." = "", setNames(genes, genes))
+        c("Select Gene..." = "", setNames(genes, genes))
       }
       current_analyses_tab <- selected_analyses_tab()
       if (is.null(current_analyses_tab) || !current_analyses_tab %in% c("Overview", "Single mutation associations", "Co-mutation Associations", "VAF Associations", "Drug Sensitivity")) current_analyses_tab <- "Overview"
@@ -912,21 +912,21 @@ server <- function(input, output, session) {
               plotOutput("clinical_plot", height = 400)))
           ),
           fluidRow(
-            column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 400), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
-            column(6, wellPanel(style = "min-height: 600px; height: 600px; overflow: hidden; box-sizing: border-box;", fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", "Gene:", choices = gene_choices_analyses), plotOutput("survival_plot", height = 340), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
+            column(6, wellPanel(fluidRow(column(8, h4("Hazard Ratios")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_forest_plot", "Download plot")))), p(style = "font-size: 14px; color: #666; margin-bottom: 6px;", "Individual gene hazard ratios were calculated between mutated and wild-type patients using a univariate Cox proportional hazards model."), plotOutput("forest_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #762a83; font-weight: bold;", "Purple"), " = significant HR > 1 (higher risk); ", span(style = "color: #1b7837; font-weight: bold;", "Green"), " = significant HR < 1 (lower risk); ", span(style = "color: #9E9E9E; font-weight: bold;", "Gray"), " = not significant."))),
+            column(6, wellPanel(fluidRow(column(8, h4("Kaplan-Meier")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_plot", "Download plot")))), selectInput("surv_gene", NULL, choices = gene_choices_analyses), plotOutput("survival_plot", height = 500), p(style = "font-size: 11px; color: #666; margin-top: 6px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = mutated; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = WT.")))
           ),
           fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini\u2013Hochberg)."), DTOutput("survival_table"))))
         ),
         tabPanel("Co-mutation Associations",
           fluidRow(
             column(12, wellPanel(
-              h4("OncoPrint: Mutations & Clinical Annotations"),
+              fluidRow(column(8, h4("OncoPrint: Mutations & Clinical Annotations")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
               plotOutput("oncoprint_plot", height = 500)
             ))
           ),
           fluidRow(
-            column(6, wellPanel(h4("Co-mutation Odds Ratio"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
-            column(6, wellPanel(h4("Top Co-occurring Pairs"), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+            column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+            column(6, wellPanel(fluidRow(column(8, h4("Top Co-occurring Pairs")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 11px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
           ),
           fluidRow(
             column(4, wellPanel(
@@ -938,7 +938,7 @@ server <- function(input, output, session) {
                 selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
             )),
             column(8, wellPanel(
-              h4("Kaplan-Meier by Co-mutation Status"),
+              fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
               uiOutput("comut_survival_plot_ui")
             ))
           )
@@ -1206,7 +1206,7 @@ server <- function(input, output, session) {
 
   observe({
     req(genes <- filtered_genes())
-    updateSelectInput(session, "surv_gene", choices = c("Select..." = "", genes))
+    updateSelectInput(session, "surv_gene", choices = c("Select Gene..." = "", genes))
     updateSelectInput(session, "vaf_gene1", choices = c("Select..." = "", genes))
     updateSelectInput(session, "vaf_gene2", choices = c("Select..." = "", genes))
     updateSelectInput(session, "comut_gene1", choices = c("Select..." = "", genes))
@@ -1841,6 +1841,91 @@ server <- function(input, output, session) {
     }
   })
 
+  output$download_oncoprint_plot <- downloadHandler(
+    filename = function() paste0("oncoprint_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      png(file, width = 1400, height = 700, res = 150)
+      od <- oncoprint_data()
+      if (is.null(od) || !is.matrix(od$temp_dat) || nrow(od$temp_dat) == 0) {
+        plot.new(); text(0.5, 0.5, "No data")
+      } else if (has_ComplexHeatmap) {
+        temp_dat <- od$temp_dat; anno_df <- od$anno_df; use_meta4 <- is_meta4()
+        col <- if (use_meta4) META4_VAR_COL else ONCO_VAR_COL
+        vtypes <- unique(as.character(temp_dat[temp_dat != ""]))
+        for (vt in setdiff(vtypes, names(col))) col[vt] <- "#80796BFF"
+        alter_fun_list <- list(
+          background = function(x, y, w, h) NULL,
+          Deletion = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Deletion"], col = "#374E55FF")) },
+          Indel = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Indel"], col = "#DF8F44FF")) },
+          ITD = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["ITD"], col = "#79AF97FF")) },
+          SNV = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["SNV"], col = "#B24745FF")) },
+          Splicing = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Splicing"], col = "#6A6599FF")) },
+          PTD = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["PTD"], col = "tan")) },
+          Other = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Other"], col = "#80796BFF")) },
+          Unknown = function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = col["Unknown"], col = "#80796BFF")) }
+        )
+        for (vt in setdiff(vtypes, names(alter_fun_list))) alter_fun_list[[vt]] <- (function(fc) function(x, y, w, h) { if (length(x) > 0) grid.rect(x, y, w * 0.5, h * 0.9, gp = gpar(fill = fc, col = fc)) })(col[vt])
+        fig <- ComplexHeatmap::oncoPrint(temp_dat, col = col, row_names_side = "right", alter_fun_is_vectorized = TRUE, alter_fun = alter_fun_list)
+        ComplexHeatmap::draw(fig)
+      } else {
+        plot.new(); text(0.5, 0.5, "ComplexHeatmap not installed")
+      }
+      dev.off()
+    }
+  )
+
+  output$download_cooccurrence_plot <- downloadHandler(
+    filename = function() paste0("cooccurrence_odds_ratio_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      cooc <- cooccurrence_data()
+      if (is.null(cooc$matrix) || nrow(cooc$matrix) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 8, dpi = 150); return(invisible(NULL)) }
+      keep_genes <- filtered_genes()
+      keep_genes <- intersect(keep_genes, rownames(cooc$matrix))
+      if (length(keep_genes) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 8, dpi = 150); return(invisible(NULL)) }
+      mat <- cooc$matrix[keep_genes, keep_genes, drop = FALSE]
+      mat_log <- log2(mat + 0.01); mat_log[mat_log > 2] <- 2; mat_log[mat_log < -2] <- -2
+      ord <- hclust(dist(mat_log))$order; mat_ord <- mat_log[ord, ord]
+      df_plot <- data.frame(Gene1 = rep(rownames(mat_ord), ncol(mat_ord)), Gene2 = rep(colnames(mat_ord), each = nrow(mat_ord)), log2OR = as.vector(mat_ord))
+      df_plot$Gene1 <- factor(df_plot$Gene1, levels = rownames(mat_ord)); df_plot$Gene2 <- factor(df_plot$Gene2, levels = colnames(mat_ord))
+      p <- ggplot(df_plot, aes(x = Gene1, y = Gene2, fill = log2OR)) + geom_tile() + scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) + coord_fixed() + labs(x = NULL, y = NULL, fill = "log2(OR)") + theme_minimal(base_size = 14) + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+      ggsave(file, plot = p, width = 10, height = 10, dpi = 150)
+    }
+  )
+
+  output$download_cooccurrence_table <- downloadHandler(
+    filename = function() paste0("cooccurrence_pairs_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
+    content = function(file) {
+      cooc <- cooccurrence_data()
+      if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) { write.csv(data.frame(), file, row.names = FALSE); return(invisible(NULL)) }
+      keep_genes <- filtered_genes()
+      df <- if (length(keep_genes) > 0) cooc$pairs[cooc$pairs$gene1 %in% keep_genes & cooc$pairs$gene2 %in% keep_genes, , drop = FALSE] else cooc$pairs
+      df$pair <- paste(df$gene1, "+", df$gene2)
+      df <- df[order(-df$n_cooccur), c("pair", "odds_ratio", "n_cooccur", "p", "q"), drop = FALSE]
+      write.csv(df, file, row.names = FALSE)
+    }
+  )
+
+  output$download_comut_survival_plot <- downloadHandler(
+    filename = function() paste0("comut_survival_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- comut_survival_data()
+      if (is.null(df) || nrow(df) == 0 || length(unique(df$Group)) < 2) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 6, dpi = 150); return(invisible(NULL)) }
+      fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = df)
+      if (has_survminer) {
+        n_groups <- length(unique(df$Group))
+        pal_all <- unname(c(PAL_SUBSET, PAL_MUT_CAT, PAL_COHORT))
+        pal_vec <- rep(pal_all, length.out = n_groups)
+        legend_labs <- gsub("^Group=", "", names(fit$strata))
+        p <- survminer::ggsurvplot(fit, data = df, risk.table = TRUE, pval = TRUE, title = "Survival by Co-mutation Status", xlab = "Years", palette = pal_vec, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05))
+        png(file, width = 1200, height = 800, res = 150)
+        print(p)
+        dev.off()
+      } else {
+        ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer not installed") + theme_void(), width = 8, height = 6, dpi = 150)
+      }
+    }
+  )
+
   output$forest_plot <- renderPlot({
     df <- forest_data()
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
@@ -1923,8 +2008,8 @@ server <- function(input, output, session) {
       df <- forest_data()
       if (is.null(df) || nrow(df) == 0) return(write("No data", file))
       df$HR_CI <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$lower, df$upper)
-      df$p_value <- format_pval_display(df$p)
-      df$p_adj <- format_pval_display(p.adjust(df$p, method = "fdr"))
+      df$p_value <- df$p
+      df$p_adj <- p.adjust(df$p, method = "fdr")
       out <- df[, c("Gene", "n_mut", "n_wt", "HR_CI", "p_value", "p_adj"), drop = FALSE]
       write.csv(out, file, row.names = FALSE)
     }
