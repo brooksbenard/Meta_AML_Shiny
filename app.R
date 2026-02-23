@@ -35,6 +35,8 @@ has_rentrez <- requireNamespace("rentrez", quietly = TRUE)
 if (has_rentrez) library(rentrez)
 has_httr <- requireNamespace("httr", quietly = TRUE)
 if (has_httr) library(httr)
+has_UpSetR <- requireNamespace("UpSetR", quietly = TRUE)
+if (has_UpSetR) library(UpSetR)
 
 # ---- Benard et al. (2021) data: commented out for simplified deploy (re-enable to add Benard tab) ----
 # Load data (app expects final_data_matrix.RData in the same directory as app.R)
@@ -528,7 +530,7 @@ ui <- fluidPage(
       var maxOverlayTimeout = null;
       var overlayVisible = false;
       var currentMainNav = 'about';
-      var LOADING_DELAY_MS = 2000;
+      var LOADING_DELAY_MS = 1500;
       var MAX_OVERLAY_MS = 30000;
 
       function showOverlay() {
@@ -640,10 +642,10 @@ ui <- fluidPage(
         sidebarLayout(
           sidebarPanel(
             width = 2,
-            h4("Filter analyses by the following:"),
+            h4("Select cohort for analysis:"),
             selectInput("subset", "AML Subset:", 
               choices = c("All", "De novo", "Secondary", "Relapse", "Therapy", "Other"), selected = "De novo"),
-            selectInput("cohort", "Cohort:", 
+            selectInput("cohort", "Dataset:", 
               choices = local({
                 coh <- c("All", sort(unique(as.character(na.omit(final_data_matrix$Cohort)))))
                 coh[coh == "Beat_AML"] <- "Beat AML"
@@ -656,7 +658,7 @@ ui <- fluidPage(
               condition = "input.main_nav === 'meta_aml4'",
               hr(),
               p(strong("Only interested in a specific gene?")),
-              wellPanel(
+              wellPanel(style = "background: #eaecef;",
                 h5("Summarize all associations for a single gene:"),
                 selectInput("gene_summary", NULL, choices = c("Select gene..." = ""), selected = "")
               )
@@ -788,15 +790,23 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
                   fluidRow(
-                    column(3, div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                      h5(style = "margin-top: 0;", "Gene Selection"),
-                      radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
-                      selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
-                      selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
-                      conditionalPanel(condition = "input.comut_n == 3",
-                        selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
-                    )),
-                    column(9, uiOutput("comut_survival_plot_ui"))
+                    column(4,
+                      div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
+                        h5(style = "margin-top: 0;", "Gene Selection"),
+                        radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                        selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
+                        selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
+                        conditionalPanel(condition = "input.comut_n == 3",
+                          selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
+                      ),
+                      div(style = "margin-top: 12px;",
+                        h5("Mutation Intersection (UpSet Plot)", style = "margin-top: 0;"),
+                        p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Overlap of the selected genes across samples."),
+                        plotOutput("upset_plot", height = 350),
+                        div(style = "margin-top: 4px;", downloadButton("download_upset_plot", "Download plot"))
+                      )
+                    ),
+                    column(8, uiOutput("comut_survival_plot_ui"))
                   )
                 ))
               )
@@ -805,7 +815,7 @@ server <- function(input, output, session) {
               tabsetPanel(
                 tabPanel("Single Gene",
                   fluidRow(
-                    column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 450))),
+                    column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 500))),
                     column(6, wellPanel(
                       h4("VAF and Survival: Hazard Ratios (MaxStat)"),
                       p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with ≥20 mutated samples with VAF and survival only.")),
@@ -813,7 +823,14 @@ server <- function(input, output, session) {
                   ),
                   fluidRow(
                     column(6, wellPanel(h4("VAF by Mutation Category"), plotOutput("vaf_category_plot", height = 450))),
-                    column(6, wellPanel(h4("VAF by Cohort"), plotOutput("vaf_cohort_plot", height = 450)))
+                    column(6, wellPanel(
+                      fluidRow(column(8, h4("Mutation HR vs MaxStat VAF HR")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_hr_vs_maxstat_plot", "Download plot")))),
+                      p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Each point is a gene. Y-axis: mutation HR (mutated vs WT). X-axis: MaxStat VAF HR (high vs low VAF). Point size reflects optimal VAF cutpoint; color indicates significance (FDR q < 0.1)."),
+                      plotOutput("hr_vs_maxstat_plot", height = 400)
+                    ))
+                  ),
+                  fluidRow(
+                    column(6, wellPanel(h4("VAF Distribution by Dataset"), plotOutput("vaf_cohort_plot", height = 450)))
                   )
                 ),
                 tabPanel("Pairwise Gene",
@@ -937,15 +954,23 @@ server <- function(input, output, session) {
             column(12, wellPanel(
               fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
               fluidRow(
-                column(3, div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                  h5(style = "margin-top: 0;", "Gene Selection"),
-                  radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
-                  selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
-                  selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
-                  conditionalPanel(condition = "input.comut_n == 3",
-                    selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
-                )),
-                column(9, uiOutput("comut_survival_plot_ui"))
+                column(4,
+                  div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
+                    h5(style = "margin-top: 0;", "Gene Selection"),
+                    radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                    selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
+                    selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
+                    conditionalPanel(condition = "input.comut_n == 3",
+                      selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
+                  ),
+                  div(style = "margin-top: 12px;",
+                    h5("Mutation Intersection (UpSet Plot)", style = "margin-top: 0;"),
+                    p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Overlap of the selected genes across samples."),
+                    plotOutput("upset_plot", height = 350),
+                    div(style = "margin-top: 4px;", downloadButton("download_upset_plot", "Download plot"))
+                  )
+                ),
+                column(8, uiOutput("comut_survival_plot_ui"))
               )
             ))
           )
@@ -954,7 +979,7 @@ server <- function(input, output, session) {
           tabsetPanel(
             tabPanel("Single Gene",
               fluidRow(
-                column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 450))),
+                column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 500))),
                 column(6, wellPanel(
                   h4("VAF and Survival: Hazard Ratios (MaxStat)"),
                   p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with \u226520 mutated samples with VAF and survival only.")),
@@ -962,7 +987,14 @@ server <- function(input, output, session) {
               ),
               fluidRow(
                 column(6, wellPanel(h4("VAF by Mutation Category"), plotOutput("vaf_category_plot", height = 450))),
-                column(6, wellPanel(h4("VAF by Cohort"), plotOutput("vaf_cohort_plot", height = 450)))
+                column(6, wellPanel(
+                  fluidRow(column(8, h4("Mutation HR vs MaxStat VAF HR")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_hr_vs_maxstat_plot", "Download plot")))),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Each point is a gene. Y-axis: mutation HR (mutated vs WT). X-axis: MaxStat VAF HR (high vs low VAF). Point size reflects optimal VAF cutpoint; color indicates significance (FDR q < 0.1)."),
+                  plotOutput("hr_vs_maxstat_plot", height = 400)
+                ))
+              ),
+              fluidRow(
+                column(6, wellPanel(h4("VAF Distribution by Dataset"), plotOutput("vaf_cohort_plot", height = 450)))
               )
             ),
             tabPanel("Pairwise Gene",
@@ -1536,7 +1568,7 @@ server <- function(input, output, session) {
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_shared +
-      (if (fill_var == "mutation_category") scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
+      (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
       labs(x = "Variant Allele Frequency (%)", y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.text = element_text(size = 13), legend.title = element_text(size = 14))
@@ -1551,7 +1583,7 @@ server <- function(input, output, session) {
         scale_y_shared +
         scale_x_continuous(breaks = function(x) { m <- max(x, na.rm = TRUE); if (m <= 0) 0 else round(c(0, m / 2, m)) }) +
         scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
-        labs(x = "N mutations", y = NULL) +
+        labs(x = "# of mutations", y = NULL) +
         theme_minimal(base_size = 16) +
         theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title = element_text(size = 15), axis.text = element_text(size = 14), plot.margin = margin(l = 6, r = 4, unit = "pt"))
     } else {
@@ -1562,7 +1594,7 @@ server <- function(input, output, session) {
         scale_y_shared +
         scale_x_continuous(breaks = function(x) { m <- max(x, na.rm = TRUE); if (m <= 0) 0 else round(c(0, m / 2, m)) }) +
         geom_col(width = 0.7, fill = "gray50") +
-        labs(x = "N mutations", y = NULL) +
+        labs(x = "# of mutations", y = NULL) +
         theme_minimal(base_size = 16) +
         theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title = element_text(size = 15), axis.text = element_text(size = 14), plot.margin = margin(l = 6, r = 4, unit = "pt"))
     }
@@ -1652,7 +1684,8 @@ server <- function(input, output, session) {
       ci_lo <- ci["GroupHigh", 1]
       ci_hi <- ci["GroupHigh", 2]
       pval <- cx_sum$coefficients["GroupHigh", "Pr(>|z|)"]
-      res_list[[length(res_list) + 1L]] <- data.frame(Gene = gene, HR = as.numeric(hr), CI_lower = as.numeric(ci_lo), CI_upper = as.numeric(ci_hi), p_value = as.numeric(pval), threshold = round(cutpoint, 1), n = nrow(merge_df), stringsAsFactors = FALSE)
+      n_high <- sum(merge_df$Group == "High")
+      res_list[[length(res_list) + 1L]] <- data.frame(Gene = gene, HR = as.numeric(hr), CI_lower = as.numeric(ci_lo), CI_upper = as.numeric(ci_hi), p_value = as.numeric(pval), threshold = round(cutpoint, 1), n = nrow(merge_df), n_high = n_high, stringsAsFactors = FALSE)
     }
     if (length(res_list) == 0) return(NULL)
     out <- do.call(rbind, res_list)
@@ -1675,10 +1708,11 @@ server <- function(input, output, session) {
     ggplot(hr_summary, aes(x = HR, y = Gene, xmin = CI_lower, xmax = CI_upper, color = ColorGroup)) +
       geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
       geom_errorbarh(height = 0.2, linewidth = 0.6) +
-      geom_point(size = 3) +
+      geom_point(aes(size = n_high), alpha = 0.8) +
       scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
+      scale_size_continuous(name = "# of patients\nabove VAF\nthreshold", range = c(2, 7)) +
       scale_x_continuous(trans = "log10", name = "Hazard ratio (High vs Low VAF, 95% CI)") +
-      labs(y = NULL, title = "VAF–Survival: HR per gene (MaxStat threshold)") +
+      labs(y = NULL, title = "VAF\u2013Survival: HR per gene (MaxStat threshold)") +
       theme_minimal(base_size = 14) +
       theme(axis.text.y = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 14, face = "bold"))
   })
@@ -1732,6 +1766,79 @@ server <- function(input, output, session) {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install the survminer package for Kaplan-Meier plots with number at risk.", size = 4) + theme_void()
     }
   })
+
+  # ---- Scatterplot: Mutation HR vs MaxStat VAF HR ----
+  hr_vs_maxstat_data <- reactive({
+    mut_hr <- forest_data()
+    vaf_hr <- vaf_survival_hr_summary()
+    if (is.null(mut_hr) || nrow(mut_hr) == 0 || is.null(vaf_hr) || nrow(vaf_hr) == 0) return(NULL)
+    mut_hr <- mut_hr[, c("Gene", "HR", "p"), drop = FALSE]
+    colnames(mut_hr) <- c("Gene", "Mutation_HR", "Mutation_p")
+    vaf_hr <- vaf_hr[, c("Gene", "HR", "p_value", "threshold"), drop = FALSE]
+    colnames(vaf_hr) <- c("Gene", "MaxStat_HR", "MaxStat_p", "VAF_threshold")
+    merged <- merge(mut_hr, vaf_hr, by = "Gene")
+    if (nrow(merged) == 0) return(NULL)
+    merged$Mutation_q <- p.adjust(merged$Mutation_p, method = "fdr")
+    merged$MaxStat_q <- p.adjust(merged$MaxStat_p, method = "fdr")
+    merged$ColorGroup <- ifelse(merged$MaxStat_q >= 0.1, "Not significant",
+      ifelse(merged$MaxStat_HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
+    merged$label_rank <- rank(merged$MaxStat_q, ties.method = "first")
+    merged
+  })
+
+  output$hr_vs_maxstat_plot <- renderPlot({
+    df <- hr_vs_maxstat_data()
+    if (is.null(df) || nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data") + theme_void())
+    sig_df <- df[df$ColorGroup != "Not significant", , drop = FALSE]
+    p <- ggplot(df, aes(x = MaxStat_HR, y = Mutation_HR, size = VAF_threshold, color = ColorGroup)) +
+      geom_point(alpha = 0.8) +
+      geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+      geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
+      scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
+      scale_size_continuous(name = "VAF threshold", range = c(2, 8)) +
+      labs(x = "MaxStat VAF HR (High vs Low VAF)", y = "Mutation HR (Mutated vs WT)") +
+      theme_minimal(base_size = 16) +
+      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
+            legend.text = element_text(size = 13), legend.title = element_text(size = 14))
+    if (nrow(sig_df) > 0) {
+      if (has_ggrepel) {
+        p <- p + ggrepel::geom_label_repel(data = sig_df, aes(label = Gene), size = 3.5, max.overlaps = 20, show.legend = FALSE, fill = "white", alpha = 0.85, label.size = 0.2)
+      } else {
+        p <- p + geom_text(data = sig_df, aes(label = Gene), size = 3.5, vjust = -0.8, show.legend = FALSE)
+      }
+    }
+    p
+  })
+
+  output$download_hr_vs_maxstat_plot <- downloadHandler(
+    filename = function() paste0("mutation_hr_vs_maxstat_hr_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- hr_vs_maxstat_data()
+      if (is.null(df) || nrow(df) == 0) {
+        ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 10, height = 7, dpi = 150)
+        return(invisible(NULL))
+      }
+      sig_df <- df[df$ColorGroup != "Not significant", , drop = FALSE]
+      p <- ggplot(df, aes(x = MaxStat_HR, y = Mutation_HR, size = VAF_threshold, color = ColorGroup)) +
+        geom_point(alpha = 0.8) +
+        geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+        geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
+        scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
+        scale_size_continuous(name = "VAF threshold", range = c(2, 8)) +
+        labs(x = "MaxStat VAF HR (High vs Low VAF)", y = "Mutation HR (Mutated vs WT)") +
+        theme_minimal(base_size = 16) +
+        theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
+              legend.text = element_text(size = 13), legend.title = element_text(size = 14))
+      if (nrow(sig_df) > 0) {
+        if (has_ggrepel) {
+          p <- p + ggrepel::geom_label_repel(data = sig_df, aes(label = Gene), size = 3.5, max.overlaps = 20, show.legend = FALSE, fill = "white", alpha = 0.85, label.size = 0.2)
+        } else {
+          p <- p + geom_text(data = sig_df, aes(label = Gene), size = 3.5, vjust = -0.8, show.legend = FALSE)
+        }
+      }
+      ggsave(file, plot = p, width = 10, height = 7, dpi = 150)
+    }
+  )
 
   forest_data <- reactive({
     surv_df <- survival_data()
@@ -1930,6 +2037,92 @@ server <- function(input, output, session) {
       } else {
         ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer not installed") + theme_void(), width = 8, height = 6, dpi = 150)
       }
+    }
+  )
+
+  # ---- UpSet plot: uses only the genes selected in the co-mutation KM panel ----
+  upset_matrix <- reactive({
+    g1 <- input$comut_gene1
+    g2 <- input$comut_gene2
+    sel_genes <- unique(c(g1, g2))
+    if (as.numeric(input$comut_n) == 3) sel_genes <- unique(c(sel_genes, input$comut_gene3))
+    sel_genes <- sel_genes[!is.null(sel_genes) & sel_genes != ""]
+    if (length(sel_genes) < 2) return(NULL)
+    df <- filtered_data()[, c("Sample", "Gene_for_analysis"), drop = FALSE]
+    df <- df[!duplicated(df), , drop = FALSE]
+    df <- df[as.character(df$Gene_for_analysis) %in% sel_genes, , drop = FALSE]
+    if (nrow(df) == 0) return(NULL)
+    wide <- as.data.frame.matrix(xtabs(~ Sample + Gene_for_analysis, data = df))
+    wide[wide > 0] <- 1L
+    if (ncol(wide) < 2) return(NULL)
+    wide
+  })
+
+  # Build UpSetR queries to color intersection bars using the same KM palette
+  upset_queries <- reactive({
+    wide <- upset_matrix()
+    if (is.null(wide) || ncol(wide) < 2) return(list())
+    genes <- colnames(wide)
+    n_genes <- length(genes)
+    # Enumerate all non-empty subsets (same groups as the KM plot)
+    combos <- list()
+    for (k in seq_len(n_genes)) {
+      cm <- combn(genes, k, simplify = FALSE)
+      combos <- c(combos, cm)
+    }
+    # Build KM-style group labels to determine alphabetical color order
+    km_labels <- character(length(combos))
+    for (i in seq_along(combos)) {
+      s <- combos[[i]]
+      if (length(s) == n_genes) {
+        km_labels[i] <- paste(s, collapse = " + ")
+      } else {
+        km_labels[i] <- paste0(paste(s, collapse = " + "), if (length(s) == 1) " only" else "")
+      }
+    }
+    # KM groups include "Neither"/"None" as the first alphabetically if present;
+    # survfit orders strata alphabetically on the Group factor
+    all_labels <- sort(c(if (n_genes == 2) "Neither" else "None", km_labels))
+    pal_all <- unname(c(PAL_SUBSET, PAL_MUT_CAT, PAL_COHORT))
+    pal_vec <- rep(pal_all, length.out = length(all_labels))
+    names(pal_vec) <- all_labels
+    queries <- list()
+    for (i in seq_along(combos)) {
+      col <- pal_vec[km_labels[i]]
+      queries[[i]] <- list(query = UpSetR::intersects, params = combos[[i]], color = unname(col), active = TRUE)
+    }
+    queries
+  })
+
+  upset_render <- function(wide, queries) {
+    n_sets <- min(ncol(wide), 20)
+    UpSetR::upset(wide, nsets = n_sets, order.by = "freq",
+                  mainbar.y.label = "Intersection Size", sets.x.label = "Samples per Gene",
+                  queries = queries, query.legend = "none",
+                  point.size = 3.5, line.size = 1.2,
+                  text.scale = c(1.8, 1.6, 1.5, 1.4, 1.8, 1.5))
+  }
+
+  output$upset_plot <- renderPlot({
+    wide <- upset_matrix()
+    if (is.null(wide) || ncol(wide) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data for UpSet plot") + theme_void())
+    if (!has_UpSetR) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "UpSetR package not installed") + theme_void())
+    upset_render(wide, upset_queries())
+  })
+
+  output$download_upset_plot <- downloadHandler(
+    filename = function() paste0("upset_mutations_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      wide <- upset_matrix()
+      if (is.null(wide) || ncol(wide) < 2 || !has_UpSetR) {
+        png(file, width = 1200, height = 800, res = 150)
+        plot.new(); text(0.5, 0.5, "Insufficient data or UpSetR not installed")
+        dev.off()
+        return(invisible(NULL))
+      }
+      png(file, width = 1200, height = 800, res = 150)
+      print(upset_render(wide, upset_queries()))
+      dev.off()
     }
   )
 
