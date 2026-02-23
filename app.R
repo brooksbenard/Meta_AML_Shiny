@@ -835,10 +835,13 @@ server <- function(input, output, session) {
                 ),
                 tabPanel("Pairwise Gene",
                   fluidRow(
-                    column(12, wellPanel(h4("VAF Scatter (Clonal Ordering)"),
+                    column(6, wellPanel(h4("VAF Scatter (Clonal Ordering)"),
                       p("Compare VAF of two genes. Points above line = Gene 1 before Gene 2."),
                       selectInput("vaf_gene1", "Gene 1:", choices = gene_choices), selectInput("vaf_gene2", "Gene 2:", choices = gene_choices),
-                      plotOutput("vaf_scatter_plot", height = 380)))
+                      plotOutput("vaf_scatter_plot", height = 450))),
+                    column(6, wellPanel(h4("Survival by Clonal Order"),
+                      p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Kaplan-Meier comparing patients where Gene 1 has higher VAF (acquired first) vs Gene 2 has higher VAF (acquired first)."),
+                      plotOutput("vaf_clonal_km_plot", height = 450)))
                   )
                 )
               )
@@ -999,10 +1002,13 @@ server <- function(input, output, session) {
             ),
             tabPanel("Pairwise Gene",
               fluidRow(
-                column(12, wellPanel(h4("VAF Scatter (Clonal Ordering)"),
+                column(6, wellPanel(h4("VAF Scatter (Clonal Ordering)"),
                   p("Compare VAF of two genes. Points above line = Gene 1 before Gene 2."),
                   selectInput("vaf_gene1", "Gene 1:", choices = gene_choices_analyses), selectInput("vaf_gene2", "Gene 2:", choices = gene_choices_analyses),
-                  plotOutput("vaf_scatter_plot", height = 380)))
+                  plotOutput("vaf_scatter_plot", height = 450))),
+                column(6, wellPanel(h4("Survival by Clonal Order"),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Kaplan-Meier comparing patients where Gene 1 has higher VAF (acquired first) vs Gene 2 has higher VAF (acquired first)."),
+                  plotOutput("vaf_clonal_km_plot", height = 450)))
               )
             )
           )
@@ -1627,29 +1633,72 @@ server <- function(input, output, session) {
     df <- df[!is.na(df$VAF) & df$VAF > 0 & !is.na(df$Cohort), , drop = FALSE]
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     cohort_pal <- if (is_meta4()) META4_COHORT_COL else PAL_COHORT
-    # Filter palette to only include cohorts present in data
     present_cohorts <- unique(df$Cohort[!is.na(df$Cohort)])
     cohort_pal <- cohort_pal[names(cohort_pal) %in% present_cohorts]
-    ggplot(df, aes(x = VAF, y = reorder(Cohort, VAF, median), fill = Cohort)) +
+    med <- aggregate(VAF ~ Cohort, data = df, FUN = median)
+    cohort_order <- as.character(med$Cohort[order(med$VAF)])
+    df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
+    scale_y_coh <- scale_y_discrete(limits = cohort_order, drop = FALSE)
+    p_box <- ggplot(df, aes(x = VAF, y = Cohort, fill = Cohort)) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
+      scale_y_coh +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
       labs(x = "Variant Allele Frequency (%)", y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.position = "none")
+    coh_counts <- as.data.frame(table(Cohort = df$Cohort), stringsAsFactors = FALSE)
+    coh_counts$Cohort <- factor(as.character(coh_counts$Cohort), levels = cohort_order)
+    p_count <- ggplot(coh_counts, aes(x = Freq, y = Cohort, fill = Cohort)) +
+      geom_vline(xintercept = 0, color = "black", linewidth = 0.5) +
+      geom_col(width = 0.7) +
+      scale_y_coh +
+      scale_x_continuous(breaks = function(x) { m <- max(x, na.rm = TRUE); if (m <= 0) 0 else round(c(0, m / 2, m)) }) +
+      scale_fill_manual(values = cohort_pal, na.value = "gray70", guide = "none") +
+      labs(x = "# of mutations", y = NULL) +
+      theme_minimal(base_size = 16) +
+      theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title = element_text(size = 15), axis.text = element_text(size = 14), plot.margin = margin(l = 6, r = 4, unit = "pt"))
+    if (has_patchwork) {
+      combined <- p_box + p_count + patchwork::plot_layout(ncol = 2, widths = c(2, 0.6))
+      print(combined)
+    } else {
+      print(p_box)
+    }
   })
 
   output$vaf_category_plot <- renderPlot({
     req(df <- filtered_data())
     df <- df[!is.na(df$VAF) & df$VAF > 0 & !is.na(df$mutation_category) & df$mutation_category != "", , drop = FALSE]
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
-    ggplot(df, aes(x = VAF, y = reorder(mutation_category, VAF, median), fill = mutation_category)) +
+    med <- aggregate(VAF ~ mutation_category, data = df, FUN = median)
+    cat_order <- as.character(med$mutation_category[order(med$VAF)])
+    df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
+    scale_y_cat <- scale_y_discrete(limits = cat_order, drop = FALSE)
+    p_box <- ggplot(df, aes(x = VAF, y = mutation_category, fill = mutation_category)) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
+      scale_y_cat +
       scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70") +
       labs(x = "Variant Allele Frequency (%)", y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.position = "none")
+    cat_counts <- as.data.frame(table(mutation_category = df$mutation_category), stringsAsFactors = FALSE)
+    cat_counts$mutation_category <- factor(as.character(cat_counts$mutation_category), levels = cat_order)
+    p_count <- ggplot(cat_counts, aes(x = Freq, y = mutation_category, fill = mutation_category)) +
+      geom_vline(xintercept = 0, color = "black", linewidth = 0.5) +
+      geom_col(width = 0.7) +
+      scale_y_cat +
+      scale_x_continuous(breaks = function(x) { m <- max(x, na.rm = TRUE); if (m <= 0) 0 else round(c(0, m / 2, m)) }) +
+      scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
+      labs(x = "# of mutations", y = NULL) +
+      theme_minimal(base_size = 16) +
+      theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title = element_text(size = 15), axis.text = element_text(size = 14), plot.margin = margin(l = 6, r = 4, unit = "pt"))
+    if (has_patchwork) {
+      combined <- p_box + p_count + patchwork::plot_layout(ncol = 2, widths = c(2, 0.6))
+      print(combined)
+    } else {
+      print(p_box)
+    }
   })
 
   # Summary of HR (and 95% CI) per gene from MaxStat-derived High vs Low VAF Cox model
@@ -2733,12 +2782,10 @@ server <- function(input, output, session) {
     p
   })
 
-  output$vaf_scatter_plot <- renderPlot({
+  vaf_clonal_wide <- reactive({
     g1 <- input$vaf_gene1
     g2 <- input$vaf_gene2
-    if (is.null(g1) || g1 == "" || is.null(g2) || g2 == "" || g1 == g2) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select two different genes"))
-    }
+    if (is.null(g1) || g1 == "" || is.null(g2) || g2 == "" || g1 == g2) return(NULL)
     req(df <- filtered_data())
     df <- df[as.character(df$Gene_for_analysis) %in% c(g1, g2), c("Sample", "Gene_for_analysis", "VAF"), drop = FALSE]
     df$Gene <- df$Gene_for_analysis
@@ -2746,19 +2793,70 @@ server <- function(input, output, session) {
     df <- df[!is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
     wide <- reshape(df, idvar = "Sample", timevar = "Gene", direction = "wide")
     colnames(wide) <- gsub("^VAF\\.", "", colnames(wide))
-    if (!g1 %in% colnames(wide) || !g2 %in% colnames(wide)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No overlap"))
+    if (!g1 %in% colnames(wide) || !g2 %in% colnames(wide)) return(NULL)
     wide <- wide[complete.cases(wide[, c(g1, g2), drop = FALSE]), , drop = FALSE]
-    if (nrow(wide) < 5) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient samples"))
+    if (nrow(wide) < 5) return(NULL)
     diff <- wide[[g1]] - wide[[g2]]
     wide$Clonality <- ifelse(diff > 5, paste(g1, "first"), ifelse(diff < -5, paste(g2, "first"), "Ambiguous"))
+    wide
+  })
+
+  output$vaf_scatter_plot <- renderPlot({
+    g1 <- input$vaf_gene1
+    g2 <- input$vaf_gene2
+    if (is.null(g1) || g1 == "" || is.null(g2) || g2 == "" || g1 == g2) {
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select two different genes", size = 6) +
+        theme_void() + theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA)))
+    }
+    wide <- vaf_clonal_wide()
+    if (is.null(wide)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient overlapping samples", size = 5) +
+      theme_void() + theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA)))
     color_vals <- c("Ambiguous" = "#999999", setNames(c("#01665e", "#8c510a"), c(paste(g1, "first"), paste(g2, "first"))))
     ggplot(wide, aes(x = .data[[g2]], y = .data[[g1]], color = Clonality)) +
-      geom_point(size = 3, alpha = 0.8) +
+      geom_point(size = 4, alpha = 0.8) +
       geom_abline(slope = 1, intercept = 5, linetype = "dashed", color = "gray50") +
       geom_abline(slope = 1, intercept = -5, linetype = "dashed", color = "gray50") +
       scale_color_manual(values = color_vals) +
+      scale_x_continuous(limits = c(0, 100)) +
+      scale_y_continuous(limits = c(0, 100)) +
       labs(x = paste(g2, "VAF (%)"), y = paste(g1, "VAF (%)"), color = "Clonal order") +
-      theme_minimal(base_size = 12)
+      theme_minimal(base_size = 14) +
+      theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA),
+            axis.text = element_text(size = 13), axis.title = element_text(size = 14), legend.text = element_text(size = 12))
+  })
+
+  output$vaf_clonal_km_plot <- renderPlot({
+    g1 <- input$vaf_gene1
+    g2 <- input$vaf_gene2
+    if (is.null(g1) || g1 == "" || is.null(g2) || g2 == "" || g1 == g2) {
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select two different genes", size = 6) +
+        theme_void() + theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA)))
+    }
+    wide <- vaf_clonal_wide()
+    if (is.null(wide)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient overlapping samples", size = 5) +
+      theme_void() + theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA)))
+    surv_df <- survival_data()
+    if (is.null(surv_df) || nrow(surv_df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No survival data") + theme_void())
+    surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
+    km_df <- merge(wide[, c("Sample", "Clonality"), drop = FALSE], surv_uniq, by = "Sample")
+    km_df <- km_df[km_df$Clonality != "Ambiguous", , drop = FALSE]
+    if (nrow(km_df) < 5 || length(unique(km_df$Clonality)) < 2) {
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient non-ambiguous samples for KM", size = 5) +
+        theme_void() + theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA)))
+    }
+    km_df$Clonality <- factor(km_df$Clonality)
+    fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Clonality, data = km_df)
+    if (has_survminer) {
+      color_vals <- c(setNames(c("#01665e", "#8c510a"), c(paste(g1, "first"), paste(g2, "first"))))
+      legend_labs <- gsub("^Clonality=", "", names(fit$strata))
+      pal_vec <- unname(color_vals[legend_labs])
+      p <- survminer::ggsurvplot(fit, data = km_df, risk.table = TRUE, pval = TRUE,
+        title = "Survival by Clonal Order", xlab = "Years",
+        palette = pal_vec, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05))
+      print(p)
+    } else {
+      ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer for KM plots", size = 5) + theme_void()
+    }
   })
 
   # Drug Sensitivity tab (BeatAML2)
