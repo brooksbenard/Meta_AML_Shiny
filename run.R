@@ -4,8 +4,9 @@
 # From RStudio: Open app.R and click "Run App", or Source this file
 # From terminal: Rscript run.R  (run from the Meta_AML_Shiny directory)
 
-if (!file.exists("final_data_matrix.RData")) {
-  stop("Data file not found. Run from the Meta_AML_Shiny directory (containing app.R and final_data_matrix.RData).")
+cohort_ok <- file.exists("AML_Meta_Cohort_v2.rds") || file.exists("AML_Meta_Cohort.rds") || file.exists("AML_Meta_Cohort.RData")
+if (!cohort_ok) {
+  stop("Cohort data not found. Run from the Meta_AML_Shiny directory (containing app.R and AML_Meta_Cohort_v2.rds or AML_Meta_Cohort.rds).")
 }
 
 message("Starting Meta AML Explorer (Meta_AML_Shiny)...")
