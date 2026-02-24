@@ -11,8 +11,8 @@ if (!dir.exists("laml_tcga") || !dir.exists("beataml2_data") || !dir.exists("aml
 
 # Common output columns (one row per sample)
 CLIN_COLS <- c(
-  "Sample_ID", "Cohort", "Age", "Sex", "AML_type",
-  "ELN_risk", "Time_to_OS_years", "OS_status", "WBC", "Hemoglobin", "Platelet",
+  "Patient_ID", "Cohort", "Age", "Sex", "AML_type",
+  "ELN_2017_Risk", "Time_to_OS_years", "OS_status", "WBC", "Hemoglobin", "Platelet",
   "BM_blasts", "PB_blasts", "Karyotype", "source_file"
 )
 
@@ -34,7 +34,7 @@ if (file.exists(pat_path) && file.exists(samp_path)) {
   pid_samp <- if ("PATIENT_ID" %in% colnames(samp)) "PATIENT_ID" else "Patient Identifier"
   m <- merge(samp[, c(pid_samp, samp_id)], pat, by.x = pid_samp, by.y = pat_id, all.x = TRUE)
   tcga_clin <- fill_clin(nrow(m))
-  tcga_clin$Sample_ID <- as.character(m[[samp_id]])
+  tcga_clin$Patient_ID <- as.character(m[[samp_id]])
   tcga_clin$Cohort <- "TCGA"
   tcga_clin$Age <- if ("AGE" %in% colnames(m)) as.character(m$AGE) else if ("Diagnosis Age" %in% colnames(m)) as.character(m$`Diagnosis Age`) else NA_character_
   tcga_clin$Sex <- if ("SEX" %in% colnames(m)) as.character(m$SEX) else if ("Sex" %in% colnames(m)) as.character(m$Sex) else NA_character_
@@ -69,6 +69,42 @@ if (file.exists(pat_path) && file.exists(samp_path)) {
   is_normal <- !is.na(raw_karyo) & (tolower(trimws(raw_karyo)) == "normal")
   simp_karyo[!is_complex & is_normal] <- "Normal"
   tcga_clin$Karyotype <- simp_karyo
+  # Derive ELN 2017 risk for TCGA from cytogenetics + mutations (no ELN in source clinical)
+  mut_path <- "laml_tcga/data_mutations.txt"
+  if (file.exists(mut_path)) {
+    mut <- read.delim(mut_path, stringsAsFactors = FALSE, check.names = FALSE)
+    samp_col <- if ("Tumor_Sample_Barcode" %in% colnames(mut)) "Tumor_Sample_Barcode" else grep("Sample|Tumor", colnames(mut), value = TRUE)[1]
+    gene_col <- if ("Hugo_Symbol" %in% colnames(mut)) "Hugo_Symbol" else "Gene"
+    vc_col <- "Variant_Classification"
+    if (!vc_col %in% colnames(mut)) vc_col <- "Variant_Classification"
+    samples <- tcga_clin$Patient_ID
+    mut$Sample <- as.character(mut[[samp_col]])
+    mut$Gene <- as.character(mut[[gene_col]])
+    mut <- mut[mut$Sample %in% samples, , drop = FALSE]
+    vc <- tolower(as.character(mut[[vc_col]]))
+    mut$is_ITD <- vc %in% c("in_frame_ins", "in_frame_insertion")
+    has_gene <- function(g) samples %in% unique(mut$Sample[mut$Gene == g])
+    n_cebpa <- setNames(rep(0L, length(samples)), samples)
+    if (any(mut$Gene == "CEBPA")) {
+      n_cebpa[names(which(table(mut$Sample[mut$Gene == "CEBPA"]) >= 2))] <- 2L
+      n_cebpa[names(which(table(mut$Sample[mut$Gene == "CEBPA"]) == 1))] <- 1L
+    }
+    NPM1_mut <- has_gene("NPM1")
+    FLT3_ITD <- samples %in% mut$Sample[mut$Gene == "FLT3" & mut$is_ITD]
+    FLT3_TKD <- samples %in% mut$Sample[mut$Gene == "FLT3" & !mut$is_ITD]
+    CEBPA_bi <- n_cebpa[samples] >= 2
+    CEBPA_bi[is.na(CEBPA_bi)] <- FALSE
+    RUNX1_mut <- has_gene("RUNX1")
+    ASXL1_mut <- has_gene("ASXL1")
+    TP53_mut <- has_gene("TP53")
+    cyto_fav <- !is.na(raw_karyo) & (grepl("t\\(8;21\\)|t\\(8; 21\\)|inv\\(16\\)|t\\(16;16\\)|t\\(15;17\\)", raw_karyo, ignore.case = TRUE))
+    cyto_adv <- !is.na(raw_karyo) & (is_complex | grepl("inv\\(3\\)|t\\(3;3\\)|t\\(6;9\\)|del\\(5q\\)|-5|del\\(7q\\)|-7|17p|t\\(v;11\\)|t\\(9;22\\)", raw_karyo, ignore.case = TRUE))
+    adverse <- cyto_adv | RUNX1_mut | ASXL1_mut | TP53_mut | (!NPM1_mut & FLT3_ITD)
+    favorable <- (cyto_fav | (NPM1_mut & !FLT3_ITD & !adverse) | (CEBPA_bi & !adverse)) & !adverse
+    tcga_clin$ELN_2017_Risk <- "Intermediate"
+    tcga_clin$ELN_2017_Risk[adverse] <- "Adverse"
+    tcga_clin$ELN_2017_Risk[favorable] <- "Favorable"
+  }
   tcga_clin$source_file <- "laml_tcga/data_clinical_patient.txt + data_clinical_sample.txt"
 }
 
@@ -85,7 +121,7 @@ if (file.exists(beat_path) && requireNamespace("readxl", quietly = TRUE)) {
   if (length(pids) > 0) {
     uids <- unique(pids)
     beat_clin <- fill_clin(length(uids))
-    beat_clin$Sample_ID <- uids
+    beat_clin$Patient_ID <- uids
     beat_clin$Cohort <- "Beat AML"
     b_sub <- b[match(uids, pids), , drop = FALSE]
     if ("ageAtDiagnosis" %in% colnames(b_sub)) beat_clin$Age <- as.character(round(suppressWarnings(as.numeric(b_sub$ageAtDiagnosis)), 1))
@@ -93,7 +129,7 @@ if (file.exists(beat_path) && requireNamespace("readxl", quietly = TRUE)) {
     beat_clin$AML_type <- "Other"
     if ("isDenovo" %in% colnames(b_sub)) beat_clin$AML_type[as.character(b_sub$isDenovo) %in% c("TRUE", "True", "1")] <- "De novo"
     if ("isTransformed" %in% colnames(b_sub)) beat_clin$AML_type[as.character(b_sub$isTransformed) %in% c("TRUE", "True", "1")] <- "Secondary"
-    if ("ELN2017" %in% colnames(b_sub)) beat_clin$ELN_risk <- as.character(b_sub$ELN2017)
+    if ("ELN2017" %in% colnames(b_sub)) beat_clin$ELN_2017_Risk <- as.character(b_sub$ELN2017)
     if ("overallSurvival" %in% colnames(b_sub)) {
       os_days <- suppressWarnings(as.numeric(b_sub$overallSurvival))
       beat_clin$Time_to_OS_years <- as.character(round(os_days / 365.25, 2))
@@ -141,7 +177,7 @@ if (file.exists("amlsg_data/AMLSG_Clinical_Anon.RData")) {
   load("amlsg_data/AMLSG_Clinical_Anon.RData")
   cl <- clinicalData
   amlsg_clin <- fill_clin(nrow(cl))
-  amlsg_clin$Sample_ID <- as.character(cl$PDID)
+  amlsg_clin$Patient_ID <- as.character(cl$PDID)
   amlsg_clin$Cohort <- "AML-SG"
   if ("AOD" %in% colnames(cl)) amlsg_clin$Age <- as.character(cl$AOD)
   if ("gender" %in% colnames(cl)) {
@@ -164,9 +200,9 @@ if (file.exists("amlsg_data/AMLSG_Clinical_Anon.RData")) {
       error = function(e) NULL
     )
     if (!is.null(nejm) && nrow(nejm) > 0 && "PDID" %in% colnames(nejm) && "eln_2017" %in% colnames(nejm)) {
-      midx <- match(amlsg_clin$Sample_ID, as.character(nejm$PDID))
+      midx <- match(amlsg_clin$Patient_ID, as.character(nejm$PDID))
       eln <- tolower(as.character(nejm$eln_2017[midx]))
-      amlsg_clin$ELN_risk <- ifelse(eln == "favorable", "Favorable",
+      amlsg_clin$ELN_2017_Risk <- ifelse(eln == "favorable", "Favorable",
         ifelse(eln == "intermediate", "Intermediate",
           ifelse(eln == "adverse", "Adverse", NA_character_)
         )
@@ -196,11 +232,11 @@ if (file.exists(prog_path)) {
   prog <- prog[keep, , drop = FALSE]
   prog_ids <- rownames(prog)
   if (length(prog_ids) > 0 && all(grepl("^PD[0-9]", prog_ids))) {
-    prog$Sample_ID <- prog_ids
+    prog$Patient_ID <- prog_ids
   } else if ("eln_2017" %in% colnames(prog) && is.character(prog[[1]])) {
-    prog$Sample_ID <- as.character(prog[[1]])
+    prog$Patient_ID <- as.character(prog[[1]])
   } else {
-    prog$Sample_ID <- rownames(prog)
+    prog$Patient_ID <- rownames(prog)
   }
 }
 n <- NULL
@@ -214,7 +250,7 @@ if (file.exists(ncri_path)) {
   n[[1]] <- as.character(n[[1]])
 }
 if (!is.null(prog) && nrow(prog) > 0) {
-  ncri_ids <- prog$Sample_ID
+  ncri_ids <- prog$Patient_ID
 } else if (!is.null(n) && nrow(n) > 0) {
   ncri_ids <- n[[1]]
 } else {
@@ -222,10 +258,10 @@ if (!is.null(prog) && nrow(prog) > 0) {
 }
 if (length(ncri_ids) > 0) {
   ncri_clin <- fill_clin(length(ncri_ids))
-  ncri_clin$Sample_ID <- ncri_ids
+  ncri_clin$Patient_ID <- ncri_ids
   ncri_clin$Cohort <- "UK-NCRI"
   ncri_clin$source_file <- "UK_NCRI_data/UK_NCRI_Clinical_data.csv + data/aml_prognosis_updated.tsv"
-  midx_prog <- if (!is.null(prog)) match(ncri_ids, prog$Sample_ID) else rep(NA_integer_, length(ncri_ids))
+  midx_prog <- if (!is.null(prog)) match(ncri_ids, prog$Patient_ID) else rep(NA_integer_, length(ncri_ids))
   midx_csv  <- if (!is.null(n)) match(ncri_ids, n[[1]]) else rep(NA_integer_, length(ncri_ids))
   if (!is.null(prog) && nrow(prog) > 0) {
     idx <- midx_prog
@@ -246,10 +282,10 @@ if (length(ncri_ids) > 0) {
       fav <- as.numeric(prog$eln_2017_favorable[idx])
       int <- as.numeric(prog$eln_2017_intermediate[idx])
       adv <- as.numeric(prog$eln_2017_adverse[idx])
-      ncri_clin$ELN_risk <- "Other/Unknown"
-      ncri_clin$ELN_risk[fav == 1] <- "Favorable"
-      ncri_clin$ELN_risk[int == 1] <- "Intermediate"
-      ncri_clin$ELN_risk[adv == 1] <- "Adverse"
+      ncri_clin$ELN_2017_Risk <- "Other/Unknown"
+      ncri_clin$ELN_2017_Risk[fav == 1] <- "Favorable"
+      ncri_clin$ELN_2017_Risk[int == 1] <- "Intermediate"
+      ncri_clin$ELN_2017_Risk[adv == 1] <- "Adverse"
     }
     if ("os" %in% colnames(prog)) ncri_clin$Time_to_OS_years <- as.character(prog$os[idx])
     if ("os_status" %in% colnames(prog)) ncri_clin$OS_status <- as.character(prog$os_status[idx])
@@ -296,7 +332,7 @@ if (length(ncri_ids) > 0) {
   }
   if (is.null(prog) || nrow(prog) == 0) {
     if (!is.null(n) && nrow(n) > 0 && nrow(ncri_clin) == nrow(n)) {
-      ncri_clin$Sample_ID <- as.character(n[[1]])
+      ncri_clin$Patient_ID <- as.character(n[[1]])
       if (ncol(n) >= 10) ncri_clin$Age <- as.character(round(suppressWarnings(as.numeric(n[[10]])), 1))
       if (ncol(n) >= 9) { g <- as.character(n[[9]]); ncri_clin$Sex <- ifelse(g == "0", "Male", ifelse(g == "1", "Female", NA_character_)) }
       if (ncol(n) >= 5) { sec <- as.character(n[[5]]); ncri_clin$AML_type <- ifelse(sec == "1", "De novo", ifelse(sec == "2", "Secondary", "Other")) }
