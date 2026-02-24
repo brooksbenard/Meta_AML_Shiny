@@ -131,11 +131,14 @@ get_beataml_allowed_samples <- function(beataml, subset = "de_novo") {
   beataml$overlap_samples
 }
 
-# Compute drug-gene VAF-AUC correlations with LOOCV for overfitting (following Benard et al. methods)
-# LOOCV: bestglm::LOOCV when available; otherwise manual LOO MSE. Same model auc ~ VAF.
-compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5, min_delta_vaf = 25, min_delta_auc = 75) {
+# Compute drug-gene VAF/CCF–AUC correlations with LOOCV for overfitting (following Benard et al. methods)
+# metric: "VAF" or "CCF"; uses that column from beataml$mutations for regressions.
+# LOOCV: bestglm::LOOCV when available; otherwise manual LOO MSE. Same model auc ~ metric.
+compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5, min_delta_vaf = 25, min_delta_auc = 75, metric = "VAF") {
   mut <- beataml$mutations
   auc <- beataml$auc
+  metric_col <- if (metric == "CCF" && "CCF" %in% colnames(mut)) "CCF" else "VAF"
+  if (!metric_col %in% colnames(mut)) return(data.frame())
 
   if (!is.null(beataml$clinical) && subset != "All") {
     clin <- beataml$clinical
@@ -170,14 +173,15 @@ compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5
   for (d in drugs) {
     auc_d <- auc[auc$inhibitor == d, c("Sample", "auc"), drop = FALSE]
     if (nrow(auc_d) < min_n) next
-    merged_d <- merge(auc_d, mut[, c("Sample", "Gene", "VAF")], by = "Sample")
+    merged_d <- merge(auc_d, mut[, c("Sample", "Gene", metric_col)], by = "Sample")
+    merged_d <- merged_d[!is.na(merged_d[[metric_col]]), , drop = FALSE]
     for (g in genes) {
       sub <- merged_d[merged_d$Gene == g, , drop = FALSE]
       if (nrow(sub) < min_n) next
-      dv <- diff(range(sub$VAF, na.rm = TRUE))
+      dv <- diff(range(sub[[metric_col]], na.rm = TRUE))
       da <- diff(range(sub$auc, na.rm = TRUE))
       if (dv < min_delta_vaf || da < min_delta_auc) next
-      fit <- tryCatch(lm(auc ~ VAF, data = sub), error = function(e) NULL)
+      fit <- tryCatch(lm(as.formula(paste0("auc ~ `", metric_col, "`")), data = sub), error = function(e) NULL)
       if (is.null(fit)) next
       cf <- summary(fit)$coefficients
       if (nrow(cf) < 2) next
@@ -189,7 +193,7 @@ compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5
       n_obs <- nrow(sub)
 
       if (use_bestglm) {
-        X <- cbind(1, sub$VAF)
+        X <- cbind(1, sub[[metric_col]])
         y <- sub$auc
         loocv_out <- tryCatch(bestglm::LOOCV(X, y), error = function(e) NULL)
         if (!is.null(loocv_out) && length(loocv_out) >= 1) {
@@ -205,7 +209,7 @@ compute_drug_vaf_correlations <- function(beataml, subset = "de_novo", min_n = 5
       }
       if (!use_bestglm || is.na(loocv_mse)) {
         sq_errors <- vapply(seq_len(n_obs), function(i) {
-          fit_loo <- tryCatch(lm(auc ~ VAF, data = sub[-i, ]), error = function(e) NULL)
+          fit_loo <- tryCatch(lm(as.formula(paste0("auc ~ `", metric_col, "`")), data = sub[-i, ]), error = function(e) NULL)
           if (!is.null(fit_loo) && length(coef(fit_loo)) >= 2) {
             pred_i <- predict(fit_loo, newdata = sub[i, , drop = FALSE])
             (sub$auc[i] - pred_i)^2
@@ -266,11 +270,14 @@ compute_mut_wt_all <- function(beataml, subset = "de_novo") {
   out
 }
 
-# Leave-one-out cross-validation for VAF-AUC correlations (MSE via bestglm::LOOCV)
+# Leave-one-out cross-validation for VAF/CCF–AUC correlations (MSE via bestglm::LOOCV)
+# metric: "VAF" or "CCF"; uses that column from beataml$mutations.
 # See https://www.rdocumentation.org/packages/bestglm/versions/0.37.3/topics/LOOCV
-compute_drug_vaf_loo <- function(beataml, subset = "de_novo", min_n = 8, min_delta_vaf = 25, min_delta_auc = 75) {
+compute_drug_vaf_loo <- function(beataml, subset = "de_novo", min_n = 8, min_delta_vaf = 25, min_delta_auc = 75, metric = "VAF") {
   mut <- beataml$mutations
   auc <- beataml$auc
+  metric_col <- if (metric == "CCF" && "CCF" %in% colnames(mut)) "CCF" else "VAF"
+  if (!metric_col %in% colnames(mut)) return(data.frame())
 
   if (!is.null(beataml$clinical) && subset != "All") {
     clin <- beataml$clinical
@@ -303,21 +310,22 @@ compute_drug_vaf_loo <- function(beataml, subset = "de_novo", min_n = 8, min_del
   for (d in drugs) {
     auc_d <- auc[auc$inhibitor == d, c("Sample", "auc"), drop = FALSE]
     if (nrow(auc_d) < min_n) next
-    merged_d <- merge(auc_d, mut[, c("Sample", "Gene", "VAF")], by = "Sample")
+    merged_d <- merge(auc_d, mut[, c("Sample", "Gene", metric_col)], by = "Sample")
+    merged_d <- merged_d[!is.na(merged_d[[metric_col]]), , drop = FALSE]
     for (g in genes) {
       sub <- merged_d[merged_d$Gene == g, , drop = FALSE]
       if (nrow(sub) < min_n) next
-      dv <- diff(range(sub$VAF, na.rm = TRUE))
+      dv <- diff(range(sub[[metric_col]], na.rm = TRUE))
       da <- diff(range(sub$auc, na.rm = TRUE))
       if (dv < min_delta_vaf || da < min_delta_auc) next
 
-      fit_full <- tryCatch(lm(auc ~ VAF, data = sub), error = function(e) NULL)
+      fit_full <- tryCatch(lm(as.formula(paste0("auc ~ `", metric_col, "`")), data = sub), error = function(e) NULL)
       if (is.null(fit_full)) next
       slope_full <- coef(fit_full)[2]
       n_obs <- nrow(sub)
 
       if (use_bestglm) {
-        X <- cbind(1, sub$VAF)
+        X <- cbind(1, sub[[metric_col]])
         y <- sub$auc
         loocv_out <- tryCatch(bestglm::LOOCV(X, y), error = function(e) NULL)
         if (!is.null(loocv_out) && length(loocv_out) >= 1) {
@@ -334,7 +342,7 @@ compute_drug_vaf_loo <- function(beataml, subset = "de_novo", min_n = 8, min_del
 
       slopes_loo <- numeric(n_obs)
       for (i in seq_len(n_obs)) {
-        fit_loo <- tryCatch(lm(auc ~ VAF, data = sub[-i, ]), error = function(e) NULL)
+        fit_loo <- tryCatch(lm(as.formula(paste0("auc ~ `", metric_col, "`")), data = sub[-i, ]), error = function(e) NULL)
         if (!is.null(fit_loo) && length(coef(fit_loo)) >= 2) {
           slopes_loo[i] <- coef(fit_loo)[2]
         } else {
@@ -349,7 +357,7 @@ compute_drug_vaf_loo <- function(beataml, subset = "de_novo", min_n = 8, min_del
       if (!use_bestglm || is.na(mse)) {
         sq_errors <- numeric(n_obs)
         for (i in seq_len(n_obs)) {
-          fit_loo <- tryCatch(lm(auc ~ VAF, data = sub[-i, ]), error = function(e) NULL)
+          fit_loo <- tryCatch(lm(as.formula(paste0("auc ~ `", metric_col, "`")), data = sub[-i, ]), error = function(e) NULL)
           if (!is.null(fit_loo) && length(coef(fit_loo)) >= 2) {
             pred_i <- predict(fit_loo, newdata = sub[i, , drop = FALSE])
             sq_errors[i] <- (sub$auc[i] - pred_i)^2

@@ -157,7 +157,7 @@ normalize_AML_Meta_Cohort <- function(d) {
     d$variant_type[vc %in% c("Sub", "SNV", "SNP", "missense_variant", "stop_gained", "Missense_Mutation", "Nonsense_Mutation", "missense", "nonsense")] <- "SNV"
     d$variant_type[vc %in% c("Del", "DEL", "Frame_Shift_Del", "frame_shift_del", "Deletion")] <- "Deletion"
     d$variant_type[vc %in% c("splice_acceptor_variant", "splice_donor_variant", "Splice_Site", "splice_site", "Splicing")] <- "Splicing"
-    d$variant_type[vc %in% c("Indel", "In_Frame_Del", "In_Frame_Ins", "in_frame_del", "in_frame_ins")] <- "Indel"
+    d$variant_type[vc %in% c("Indel", "In_Frame_Del", "In_Frame_Ins", "in_frame_del", "in_frame_ins", "Frame_Shift_Ins", "frame_shift_ins", "Insertion")] <- "Indel"
     d$variant_type[vc %in% c("ITD", "Internal_Tandem_Duplication")] <- "ITD"
     d$variant_type[vc %in% c("PTD", "Partial_Tandem_Duplication")] <- "PTD"
     d$variant_type[is.na(d$variant_type) | d$variant_type == ""] <- "Other"
@@ -236,6 +236,15 @@ normalize_AML_Meta_Cohort <- function(d) {
         }
       }
     }
+  }
+  # NPM1: most AML mutations are insertions; if Gene is NPM1 and AA_change indicates frameshift, label as Indel
+  # e.g. p.W288Cfs*12, W288fs, frameshift, frame_shift
+  if ("variant_type" %in% colnames(d) && "Gene" %in% colnames(d) && "AA_change" %in% colnames(d)) {
+    npm1 <- as.character(d$Gene) == "NPM1"
+    aa <- as.character(d$AA_change)
+    aa[is.na(aa)] <- ""
+    frameshift_in_aa <- grepl("frame_shift|frameshift|frame shift|fs\\*|fs\\d|fs$|fs[\\s,;]|ins.*fs|fs.*ins", aa, ignore.case = TRUE)
+    d$variant_type[npm1 & frameshift_in_aa] <- "Indel"
   }
   # mutation_category, Age, Sex, Risk (Sex: MALE->Male, FEMALE->Female; ELN2017: Adverse/Intermediate/Favorable else Unknown)
   if ("mutation_category" %in% colnames(d)) {
@@ -3313,42 +3322,62 @@ server <- function(input, output, session) {
     return(beataml_wave12())
   })
 
+  # Beat AML with mutations enriched by CCF from cohort when Allele metric = CCF (for drug sensitivity regressions)
+  beataml_with_metric <- reactive({
+    b <- beataml_for_drug()
+    if (is.null(b) || !b$ok) return(b)
+    if (is.null(input$vaf_metric) || input$vaf_metric != "CCF") return(b)
+    fd <- filtered_data()
+    if (is.null(fd) || !"Cohort" %in% colnames(fd) || !"CCF" %in% colnames(fd)) return(b)
+    beat <- fd[fd$Cohort == "Beat AML", c("Sample", "Gene", "CCF"), drop = FALSE]
+    if (nrow(beat) == 0) return(b)
+    beat <- aggregate(CCF ~ Sample + Gene, data = beat, FUN = max, na.rm = TRUE)
+    b$mutations <- merge(b$mutations, beat, by = c("Sample", "Gene"), all.x = TRUE)
+    b
+  })
+
   drug_correlations <- reactive({
     input$main_nav
     input$drug_subset
+    input$vaf_metric
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     nav <- input$main_nav
+    metric <- if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "CCF" else "VAF"
     if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
-      pc <- precomputed_drug$meta_aml4[[subset]]$correlations
+      pc <- if (metric == "VAF") precomputed_drug$meta_aml4[[subset]]$correlations
+            else precomputed_drug$meta_aml4[[subset]]$correlations_ccf
       if (!is.null(pc) && nrow(pc) > 0) return(pc)
     }
-    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+    if (metric == "VAF" && !is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
       pc <- precomputed_drug$analyses[[subset]]$correlations
       if (!is.null(pc) && nrow(pc) > 0) return(pc)
     }
-    b <- beataml_for_drug()
+    b <- beataml_with_metric()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_correlations")) return(NULL)
-    compute_drug_vaf_correlations(b, subset = subset)
+    compute_drug_vaf_correlations(b, subset = subset, metric = metric)
   })
 
   drug_loo <- reactive({
     input$main_nav
     input$drug_subset
+    input$vaf_metric
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     nav <- input$main_nav
+    metric <- if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "CCF" else "VAF"
     if (!is.null(precomputed_drug) && identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
-      pc <- precomputed_drug$meta_aml4[[subset]]$loo
+      pc <- if (metric == "VAF") precomputed_drug$meta_aml4[[subset]]$loo
+            else precomputed_drug$meta_aml4[[subset]]$loo_ccf
       if (!is.null(pc) && nrow(pc) > 0) return(pc)
     }
-    if (!is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+    if (metric == "VAF" && !is.null(precomputed_drug) && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
       pc <- precomputed_drug$analyses[[subset]]$loo
       if (!is.null(pc) && nrow(pc) > 0) return(pc)
     }
-    b <- beataml_for_drug()
+    b <- beataml_with_metric()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_loo")) return(NULL)
-    compute_drug_vaf_loo(b, subset = subset)
+    compute_drug_vaf_loo(b, subset = subset, metric = metric)
   })
 
   # Gene and inhibitor options for VAF vs AUC Scatter from same sources as Mut vs WT and VAF vs AUC analyses
@@ -3393,13 +3422,15 @@ server <- function(input, output, session) {
     )
   })
 
-  # Shared data and y-axis range for Individual Mutation and VAF Associations (boxplot + scatter)
+  # Shared data and y-axis range for Individual Mutation and VAF/CCF Associations (boxplot + scatter)
   drug_scatter_shared <- reactive({
     drug <- input$drug_inhibitor
     gene <- input$drug_gene
     if (is.null(drug) || drug == "" || is.null(gene) || gene == "") return(NULL)
-    b <- beataml_for_drug()
+    b <- beataml_with_metric()
     if (is.null(b) || !b$ok) return(NULL)
+    mcol <- vaf_col()
+    if (!mcol %in% colnames(b$mutations)) mcol <- "VAF"
     subset <- if (is.null(input$drug_subset)) "de_novo" else input$drug_subset
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
     auc_sub <- b$auc[b$auc$inhibitor == drug & b$auc$Sample %in% allowed, c("Sample", "auc"), drop = FALSE]
@@ -3416,8 +3447,10 @@ server <- function(input, output, session) {
     wilcox <- if (length(mut_auc) >= 2 && length(wt_auc) >= 2) tryCatch(wilcox.test(mut_auc, wt_auc), error = function(e) NULL) else NULL
     median_mut <- median(mut_auc, na.rm = TRUE)
     median_wt <- median(wt_auc, na.rm = TRUE)
-    mut_sub <- b$mutations[b$mutations$Gene == gene & b$mutations$Sample %in% allowed, c("Sample", "VAF"), drop = FALSE]
+    mut_sub <- b$mutations[b$mutations$Gene == gene & b$mutations$Sample %in% allowed, c("Sample", mcol), drop = FALSE]
+    mut_sub <- mut_sub[!is.na(mut_sub[[mcol]]), , drop = FALSE]
     merged <- merge(auc_sub[, c("Sample", "auc")], mut_sub, by = "Sample")
+    merged$VAF <- merged[[mcol]]
     list(auc_sub = auc_sub, merged = merged, y_lim = y_lim, tt = tt, wilcox = wilcox, median_mut = median_mut, median_wt = median_wt, mean_mut = mean(mut_auc, na.rm = TRUE), mean_wt = mean(wt_auc, na.rm = TRUE), n_mut = length(mut_auc), n_wt = length(wt_auc))
   })
 
@@ -3470,29 +3503,32 @@ server <- function(input, output, session) {
     out
   })
 
-  # Drug correlations and LOOCV for gene summary tab (uses main subset filter); use precomputed when subset is All/de_novo/secondary
+  # Drug correlations and LOOCV for gene summary tab (uses main subset filter); use precomputed when subset is All/de_novo/secondary and metric is VAF
   gene_summary_drug_correlations <- reactive({
     input$subset
     input$main_nav
+    input$vaf_metric
     subset <- input$subset
     if (is.null(subset) || subset == "All") subset <- "de_novo"
     subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
     subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
     nav <- input$main_nav
+    metric <- if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "CCF" else "VAF"
     if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
       if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
-        pc <- precomputed_drug$meta_aml4[[subset]]$correlations
+        pc <- if (metric == "VAF") precomputed_drug$meta_aml4[[subset]]$correlations
+              else precomputed_drug$meta_aml4[[subset]]$correlations_ccf
         if (!is.null(pc) && nrow(pc) > 0) return(pc)
       }
-      if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      if (metric == "VAF" && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
         pc <- precomputed_drug$analyses[[subset]]$correlations
         if (!is.null(pc) && nrow(pc) > 0) return(pc)
       }
     }
-    b <- beataml_for_drug()
+    b <- beataml_with_metric()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_correlations")) return(NULL)
-    compute_drug_vaf_correlations(b, subset = subset)
+    compute_drug_vaf_correlations(b, subset = subset, metric = metric)
   })
 
   # Single Gene Drug: only the correlation rows for the selected gene (uses gene_summary_drug_subset)
@@ -3502,19 +3538,21 @@ server <- function(input, output, session) {
     subset <- input$gene_summary_drug_subset
     if (is.null(subset) || subset == "") subset <- "de_novo"
     nav <- input$main_nav
+    metric <- if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "CCF" else "VAF"
     base_genes <- gene_to_beataml_bases(g)
     full <- NULL
     if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
       if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
-        full <- precomputed_drug$meta_aml4[[subset]]$correlations
-      } else if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+        full <- if (metric == "VAF") precomputed_drug$meta_aml4[[subset]]$correlations
+                else precomputed_drug$meta_aml4[[subset]]$correlations_ccf
+      } else if (metric == "VAF" && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
         full <- precomputed_drug$analyses[[subset]]$correlations
       }
     }
     if (is.null(full) || nrow(full) == 0) {
-      b <- beataml_for_drug()
+      b <- beataml_with_metric()
       if (is.null(b) || !b$ok || !exists("compute_drug_vaf_correlations")) return(NULL)
-      full <- compute_drug_vaf_correlations(b, subset = subset)
+      full <- compute_drug_vaf_correlations(b, subset = subset, metric = metric)
     }
     if (is.null(full) || nrow(full) == 0) return(NULL)
     sub <- full[full$Gene %in% base_genes, , drop = FALSE]
@@ -3525,25 +3563,28 @@ server <- function(input, output, session) {
   gene_summary_drug_loo <- reactive({
     input$subset
     input$main_nav
+    input$vaf_metric
     subset <- input$subset
     if (is.null(subset) || subset == "All") subset <- "de_novo"
     subset_map <- c("De novo" = "de_novo", "Secondary" = "secondary", "Relapse" = "relapse", "Therapy" = "therapy", "Other" = "other")
     subset <- if (subset %in% names(subset_map)) subset_map[subset] else tolower(subset)
     nav <- input$main_nav
+    metric <- if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "CCF" else "VAF"
     if (!is.null(precomputed_drug) && subset %in% c("All", "de_novo", "secondary")) {
       if (identical(nav, "meta_aml4") && subset %in% names(precomputed_drug$meta_aml4)) {
-        pc <- precomputed_drug$meta_aml4[[subset]]$loo
+        pc <- if (metric == "VAF") precomputed_drug$meta_aml4[[subset]]$loo
+              else precomputed_drug$meta_aml4[[subset]]$loo_ccf
         if (!is.null(pc) && nrow(pc) > 0) return(pc)
       }
-      if (identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
+      if (metric == "VAF" && identical(nav, "analyses") && subset %in% names(precomputed_drug$analyses)) {
         pc <- precomputed_drug$analyses[[subset]]$loo
         if (!is.null(pc) && nrow(pc) > 0) return(pc)
       }
     }
-    b <- beataml_for_drug()
+    b <- beataml_with_metric()
     if (is.null(b) || !b$ok) return(NULL)
     if (!exists("compute_drug_vaf_loo")) return(NULL)
-    compute_drug_vaf_loo(b, subset = subset)
+    compute_drug_vaf_loo(b, subset = subset, metric = metric)
   })
 
   output$drug_summary_ui <- renderUI({
@@ -3587,12 +3628,13 @@ server <- function(input, output, session) {
     plot_df$Gene <- factor(plot_df$Gene, levels = rev(gene_meds$Gene[order(gene_meds$delta_AUC)]))
     inh_meds <- aggregate(delta_AUC ~ Inhibitor, data = plot_df, FUN = median)
     plot_df$Inhibitor <- factor(plot_df$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$delta_AUC)])
+    size_lab <- paste0("Delta ", vaf_col())
     p <- ggplot(plot_df, aes(x = Inhibitor, y = Gene, fill = delta_AUC, size = VAF_range, label = star)) +
       geom_point(shape = 21, color = "black", stroke = 0.5) +
       geom_text(size = 5, color = "#525252", hjust = -0.2, vjust = 0.5, show.legend = FALSE) +
       scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0,
         name = expression(Delta~"AUC")) +
-      scale_size_continuous(name = expression(Delta~"VAF"), range = c(2, 8)) +
+      scale_size_continuous(name = size_lab, range = c(2, 8)) +
       labs(x = "Inhibitor", y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
@@ -3741,6 +3783,7 @@ server <- function(input, output, session) {
     if (nrow(merged) < 5) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient samples") + theme_minimal(base_size = 14))
     gene <- input$drug_gene
     drug <- input$drug_inhibitor
+    xlabel <- vaf_label()
     fit <- lm(auc ~ VAF, data = merged)
     slope <- coef(fit)[2]
     line_col <- if (slope > 0) "#2166ac" else "#b2182b"
@@ -3751,7 +3794,7 @@ server <- function(input, output, session) {
       geom_point(size = 3, alpha = 0.8, color = line_col) +
       geom_smooth(method = "lm", se = TRUE, color = line_col, fill = line_col, alpha = 0.2) +
       coord_cartesian(ylim = d$y_lim) +
-      labs(title = paste0(drug, " vs ", gene, " VAF"), x = "VAF (%)", y = "Drug AUC",
+      labs(title = paste0(drug, " vs ", gene, " ", xlabel), x = xlabel, y = "Drug AUC",
         subtitle = paste0("R² = ", r2, ", ", ptxt)) +
       theme_minimal(base_size = 14) +
       theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 13, face = "bold"), plot.subtitle = element_text(size = 10, color = "gray40"))
@@ -3830,9 +3873,10 @@ server <- function(input, output, session) {
       plot_df$Gene <- factor(plot_df$Gene, levels = rev(gene_meds$Gene[order(gene_meds$delta_AUC)]))
       inh_meds <- aggregate(delta_AUC ~ Inhibitor, data = plot_df, FUN = median)
       plot_df$Inhibitor <- factor(plot_df$Inhibitor, levels = inh_meds$Inhibitor[order(inh_meds$delta_AUC)])
+      size_lab <- paste0("Delta ", vaf_col())
       p <- ggplot(plot_df, aes(x = Inhibitor, y = Gene, fill = delta_AUC, size = VAF_range, label = star)) +
         geom_point(shape = 21, color = "black", stroke = 0.5) + geom_text(size = 5, color = "#525252", hjust = -0.2, vjust = 0.5, show.legend = FALSE) +
-        scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0, name = "Delta AUC") + scale_size_continuous(name = "Delta VAF", range = c(2, 8)) +
+        scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0, name = "Delta AUC") + scale_size_continuous(name = size_lab, range = c(2, 8)) +
         labs(x = "Inhibitor", y = NULL) + theme_minimal(base_size = 16) + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.text = element_text(size = 14), legend.position = "right")
       ggsave(file, plot = p, width = 12, height = max(6, length(unique(plot_df$Gene)) * 0.3), dpi = 300)
     }
@@ -3846,11 +3890,12 @@ server <- function(input, output, session) {
       merged <- d$merged
       if (nrow(merged) < 5) { p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient samples") + theme_minimal(); ggsave(file, plot = p, width = 6, height = 4, dpi = 150); return(invisible(NULL)) }
       gene <- input$drug_gene; drug <- input$drug_inhibitor
+      xlabel <- vaf_label()
       line_col <- if (cor(merged$VAF, merged$auc, use = "pairwise.complete.obs") > 0) "#2166ac" else "#b2182b"
       fit <- lm(auc ~ VAF, data = merged)
       r2 <- round(summary(fit)$r.squared, 3); pv <- summary(fit)$coefficients[2, 4]
       ptxt <- if (pv < 0.001) "p < 0.001" else paste0("p = ", format.pval(pv, digits = 2))
-      p <- ggplot(merged, aes(x = VAF, y = auc)) + geom_point(size = 3, alpha = 0.8, color = line_col) + geom_smooth(method = "lm", se = TRUE, color = line_col, fill = line_col, alpha = 0.2) + coord_cartesian(ylim = d$y_lim) + labs(title = paste0(drug, " vs ", gene, " VAF"), x = "VAF (%)", y = "Drug AUC", subtitle = paste0("R² = ", r2, ", ", ptxt)) + theme_minimal(base_size = 14)
+      p <- ggplot(merged, aes(x = VAF, y = auc)) + geom_point(size = 3, alpha = 0.8, color = line_col) + geom_smooth(method = "lm", se = TRUE, color = line_col, fill = line_col, alpha = 0.2) + coord_cartesian(ylim = d$y_lim) + labs(title = paste0(drug, " vs ", gene, " ", xlabel), x = xlabel, y = "Drug AUC", subtitle = paste0("R² = ", r2, ", ", ptxt)) + theme_minimal(base_size = 14)
       ggsave(file, plot = p, width = 6, height = 5, dpi = 300)
     }
   )
@@ -4623,8 +4668,10 @@ server <- function(input, output, session) {
     sub <- sub[order(sub$p_value), , drop = FALSE]
     inhibitors <- unique(sub$Inhibitor)
     if (length(inhibitors) > 24) inhibitors <- head(inhibitors, 24)
-    b <- beataml_for_drug()
+    b <- beataml_with_metric()
     if (is.null(b) || !b$ok) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void())
+    mcol <- vaf_col()
+    if (!mcol %in% colnames(b$mutations)) mcol <- "VAF"
     subset <- input$gene_summary_drug_subset
     if (is.null(subset) || subset == "") subset <- "de_novo"
     allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
@@ -4632,8 +4679,10 @@ server <- function(input, output, session) {
     trend_list <- list()
     for (inh in inhibitors) {
       auc_sub <- b$auc[b$auc$inhibitor == inh & b$auc$Sample %in% allowed, c("Sample", "auc"), drop = FALSE]
-      mut_sub <- b$mutations[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed, c("Sample", "VAF"), drop = FALSE]
+      mut_sub <- b$mutations[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed, c("Sample", mcol), drop = FALSE]
+      mut_sub <- mut_sub[!is.na(mut_sub[[mcol]]), , drop = FALSE]
       merged <- merge(auc_sub, mut_sub, by = "Sample")
+      merged$VAF <- merged[[mcol]]
       if (nrow(merged) >= 5) {
         corr_row <- sub[sub$Inhibitor == inh, , drop = FALSE]
         if (nrow(corr_row) > 0) {
@@ -4660,12 +4709,13 @@ server <- function(input, output, session) {
     pval_txt <- format_pval_display(label_df$p_value)
     label_df$label <- paste0("R² = ", round(label_df$R_squared, 3), ", p ", pval_txt, label_df$star)
     trend_colors <- c("Sensitive" = "#b2182b", "Resistant" = "#2166ac", "Unknown" = "gray50")
+    xlabel <- vaf_label()
     p <- ggplot(scatter_df, aes(x = VAF, y = auc, color = Trend)) +
       geom_point(size = 2.5, alpha = 0.7) +
       geom_smooth(method = "lm", se = TRUE, alpha = 0.2, linewidth = 0.8) +
       scale_color_manual(values = trend_colors, name = "Trend", guide = "none") +
       facet_wrap(~ Inhibitor, scales = "free", ncol = min(3, length(inhibitors))) +
-      labs(x = "VAF (%)", y = "Drug AUC", title = paste("VAF vs AUC scatterplots:", g, "(p < 0.05)")) +
+      labs(x = xlabel, y = "Drug AUC", title = paste(vaf_col(), "vs AUC scatterplots:", g, "(p < 0.05)")) +
       theme_minimal(base_size = 16) +
       theme(
         axis.text = element_text(size = 14),
@@ -4949,14 +4999,17 @@ server <- function(input, output, session) {
       if (nrow(sub) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No p < 0.05 correlations") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
       sub <- sub[order(sub$p_value), , drop = FALSE]; inhibitors <- unique(sub$Inhibitor)
       if (length(inhibitors) > 24) inhibitors <- head(inhibitors, 24)
-      b <- beataml_for_drug(); if (is.null(b) || !b$ok) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      b <- beataml_with_metric(); if (is.null(b) || !b$ok) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No Beat AML data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      mcol <- vaf_col(); if (!mcol %in% colnames(b$mutations)) mcol <- "VAF"
       subset <- input$gene_summary_drug_subset; if (is.null(subset) || subset == "") subset <- "de_novo"
       allowed <- if (exists("get_beataml_allowed_samples")) get_beataml_allowed_samples(b, subset) else b$overlap_samples
       scatter_list <- list()
       for (inh in inhibitors) {
         auc_sub <- b$auc[b$auc$inhibitor == inh & b$auc$Sample %in% allowed, c("Sample", "auc"), drop = FALSE]
-        mut_sub <- b$mutations[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed, c("Sample", "VAF"), drop = FALSE]
+        mut_sub <- b$mutations[b$mutations$Gene %in% base_genes & b$mutations$Sample %in% allowed, c("Sample", mcol), drop = FALSE]
+        mut_sub <- mut_sub[!is.na(mut_sub[[mcol]]), , drop = FALSE]
         merged <- merge(auc_sub, mut_sub, by = "Sample")
+        merged$VAF <- merged[[mcol]]
         if (nrow(merged) >= 5) {
           corr_row <- sub[sub$Inhibitor == inh, , drop = FALSE]
           if (nrow(corr_row) > 0) { fit <- tryCatch(lm(auc ~ VAF, data = merged), error = function(e) NULL); slope <- if (!is.null(fit)) coef(fit)[2] else NA_real_; trend <- if (is.na(slope)) "Unknown" else if (slope < 0) "Sensitive" else "Resistant"; merged$Inhibitor <- inh; merged$R_squared <- corr_row$R_squared[1]; merged$p_value <- corr_row$p_value[1]; merged$q_value <- corr_row$q_value[1]; merged$Trend <- trend; scatter_list[[length(scatter_list) + 1L]] <- merged }
@@ -4966,7 +5019,8 @@ server <- function(input, output, session) {
       scatter_df <- do.call(rbind, scatter_list); scatter_df$Inhibitor <- factor(scatter_df$Inhibitor, levels = inhibitors); scatter_df$Trend <- factor(scatter_df$Trend, levels = c("Sensitive", "Resistant", "Unknown"))
       label_df <- unique(scatter_df[, c("Inhibitor", "R_squared", "p_value", "q_value", "Trend"), drop = FALSE]); label_df$star <- ifelse(label_df$q_value < 0.1, "*", ""); label_df$label <- paste0("R² = ", round(label_df$R_squared, 3), ", p ", format_pval_display(label_df$p_value), label_df$star)
       trend_colors <- c("Sensitive" = "#b2182b", "Resistant" = "#2166ac", "Unknown" = "gray50")
-      p <- ggplot(scatter_df, aes(x = VAF, y = auc, color = Trend)) + geom_point(size = 2.5, alpha = 0.7) + geom_smooth(method = "lm", se = TRUE, alpha = 0.2, linewidth = 0.8) + scale_color_manual(values = trend_colors, name = "Trend", guide = "none") + facet_wrap(~ Inhibitor, scales = "free", ncol = min(3, length(inhibitors))) + labs(x = "VAF (%)", y = "Drug AUC", title = paste("VAF vs AUC:", g, "(p < 0.05)")) + theme_minimal(base_size = 16) + theme(axis.text = element_text(size = 14), strip.text = element_text(size = 14, face = "bold"), strip.background = element_rect(fill = "#f0f0f0", color = NA), panel.spacing = unit(1, "lines"), plot.title = element_text(size = 17, face = "bold")) + geom_text(aes(x = Inf, y = Inf, label = label), hjust = 1.1, vjust = 1.5, size = 4, inherit.aes = FALSE, data = label_df)
+      xlabel <- vaf_label()
+      p <- ggplot(scatter_df, aes(x = VAF, y = auc, color = Trend)) + geom_point(size = 2.5, alpha = 0.7) + geom_smooth(method = "lm", se = TRUE, alpha = 0.2, linewidth = 0.8) + scale_color_manual(values = trend_colors, name = "Trend", guide = "none") + facet_wrap(~ Inhibitor, scales = "free", ncol = min(3, length(inhibitors))) + labs(x = xlabel, y = "Drug AUC", title = paste(vaf_col(), "vs AUC:", g, "(p < 0.05)")) + theme_minimal(base_size = 16) + theme(axis.text = element_text(size = 14), strip.text = element_text(size = 14, face = "bold"), strip.background = element_rect(fill = "#f0f0f0", color = NA), panel.spacing = unit(1, "lines"), plot.title = element_text(size = 17, face = "bold")) + geom_text(aes(x = Inf, y = Inf, label = label), hjust = 1.1, vjust = 1.5, size = 4, inherit.aes = FALSE, data = label_df)
       ggsave(file, plot = p, width = 4 * min(3, length(inhibitors)), height = 4 * ceiling(length(inhibitors) / 3), dpi = 300)
     }
   )
