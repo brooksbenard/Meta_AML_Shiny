@@ -1203,6 +1203,7 @@ server <- function(input, output, session) {
       cached_filtered_data$meta_aml4 <- NULL
       cached_data_params$meta_aml4 <- NULL
     }
+    gc()  # Return freed cache memory to OS sooner
   }, ignoreInit = TRUE)
 
   # When switching to Single Gene Drug Sensitivity sub-tab, run gc() to free memory before loading Drug content (reduces OOM)

@@ -887,6 +887,90 @@ amlsg_mut$Cohort <- "AML-SG"
 amlsg_mut$AA_change <- if ("AA_CHANGE" %in% colnames(amlsg_mut)) as.character(amlsg_mut$AA_CHANGE) else NA_character_
 amlsg_mut$Gene_Group <- assign_gene_group(amlsg_mut$Gene, amlsg_mut$variant_type, amlsg_mut$AA_change)
 
+# AML-SG FLT3-ITD: add from AMLSG_FLT3ITD.txt for samples that do not already have FLT3-ITD in AMLSG_Genetic.txt,
+# so all FLT3 mutations are accounted for (Genetic may lack FLT3 for some samples; FLT3ITD is the dedicated assay).
+amlsg_flt3_path <- file.path(getwd(), "amlsg_data", "AMLSG_FLT3ITD.txt")
+if (file.exists(amlsg_flt3_path)) {
+  amlsg_flt3 <- read.delim(amlsg_flt3_path, stringsAsFactors = FALSE, check.names = FALSE)
+  status_col <- grep("FLT3_ITD_status|ITD_status", colnames(amlsg_flt3), ignore.case = TRUE, value = TRUE)[1]
+  id_col <- grep("^ID$", colnames(amlsg_flt3), value = TRUE)[1]
+  if (length(id_col) == 0 || is.na(id_col)) {
+    sample_col <- grep("^Sample$|^sample$", colnames(amlsg_flt3), value = TRUE)[1]
+    if (length(sample_col)) {
+      id_col <- sample_col
+      flt3_id_raw <- as.character(amlsg_flt3[[id_col]])
+      flt3_id_raw <- sub("^WGA_", "", flt3_id_raw)
+    }
+  }
+  if (length(status_col) && length(id_col) && any(amlsg_flt3[[status_col]] == "ITD")) {
+    itd_idx <- which(amlsg_flt3[[status_col]] == "ITD")
+    flt3_sample <- as.character(amlsg_flt3[[id_col]][itd_idx])
+    if (exists("flt3_id_raw")) flt3_sample <- flt3_id_raw[itd_idx]
+    existing_sample_gene <- paste(amlsg_mut$Sample, amlsg_mut$Gene, sep = "|")
+    to_add <- !(paste(flt3_sample, "FLT3-ITD", sep = "|") %in% existing_sample_gene)
+    if (any(to_add)) {
+      add_sample <- flt3_sample[to_add]
+      read_col <- grep("Read_count", colnames(amlsg_flt3), ignore.case = TRUE, value = TRUE)[1]
+      cov_col <- grep("^Coverage$", colnames(amlsg_flt3), value = TRUE)[1]
+      vaf_vals <- rep(NA_real_, length(add_sample))
+      if (length(read_col) && length(cov_col)) {
+        r <- as.numeric(amlsg_flt3[[read_col]][itd_idx[to_add]])
+        c <- as.numeric(amlsg_flt3[[cov_col]][itd_idx[to_add]])
+        vaf_vals <- ifelse(!is.na(r) & !is.na(c) & c > 0, 100 * r / c, NA_real_)
+      }
+      amlsg_flt3_extra <- data.frame(
+        Sample = add_sample,
+        Gene = "FLT3-ITD",
+        VAF = vaf_vals,
+        variant_type = "ITD",
+        Cohort = "AML-SG",
+        AA_change = NA_character_,
+        Gene_Group = "FLT3_ITD",
+        stringsAsFactors = FALSE
+      )
+      amlsg_mut <- rbind(amlsg_mut[, c("Sample", "Gene", "VAF", "variant_type", "Cohort", "AA_change", "Gene_Group")],
+                        amlsg_flt3_extra)
+      cat("  AML-SG: added ", nrow(amlsg_flt3_extra), " FLT3-ITD mutations from AMLSG_FLT3ITD.txt (samples without FLT3-ITD in AMLSG_Genetic.txt)\n", sep = "")
+    }
+  }
+}
+
+# AML-SG FLT3 from clinical: add FLT3-ITD / FLT3-TKD / FLT3-Other from AMLSG_Clinical_Anon.RData columns when 1 and not already in mutations
+amlsg_mut_cols <- c("Sample", "Gene", "VAF", "variant_type", "Cohort", "AA_change", "Gene_Group")
+existing_sg <- paste(amlsg_mut$Sample, amlsg_mut$Gene, sep = "|")
+clin_pdid <- as.character(amlsg_clin$PDID)
+flt3_clin_specs <- list(
+  FLT3_ITD = list(Gene = "FLT3-ITD", variant_type = "ITD", Gene_Group = "FLT3_ITD"),
+  FLT3_TKD = list(Gene = "FLT3-TKD", variant_type = "SNV", Gene_Group = "FLT3_TKD"),
+  FLT3_other = list(Gene = "FLT3-Other", variant_type = "Other", Gene_Group = "FLT3_other")
+)
+for (col in names(flt3_clin_specs)) {
+  if (!col %in% colnames(amlsg_clin)) next
+  val <- amlsg_clin[[col]]
+  val <- as.numeric(val)
+  pos_idx <- which(!is.na(val) & val == 1)
+  if (length(pos_idx) == 0) next
+  spec <- flt3_clin_specs[[col]]
+  samp <- clin_pdid[pos_idx]
+  to_add <- !(paste(samp, spec$Gene, sep = "|") %in% existing_sg)
+  if (any(to_add)) {
+    add_samp <- samp[to_add]
+    extra <- data.frame(
+      Sample = add_samp,
+      Gene = spec$Gene,
+      VAF = NA_real_,
+      variant_type = spec$variant_type,
+      Cohort = "AML-SG",
+      AA_change = NA_character_,
+      Gene_Group = spec$Gene_Group,
+      stringsAsFactors = FALSE
+    )
+    amlsg_mut <- rbind(amlsg_mut[, amlsg_mut_cols], extra)
+    existing_sg <- c(existing_sg, paste(extra$Sample, extra$Gene, sep = "|"))
+    cat("  AML-SG: added ", nrow(extra), " ", spec$Gene, " from clinical column ", col, "\n", sep = "")
+  }
+}
+
 # AML-SG clinical: PDID, TypeAML, OS (days), Status, M_Risk (ELN), AOD (age), gender
 amlsg_clin$Sample <- amlsg_clin$PDID
 amlsg_clin$Subset <- ifelse(amlsg_clin$TypeAML == "AML", "De novo",
@@ -967,9 +1051,10 @@ ukncri_mut$AA_change <- if ("protein" %in% colnames(ukncri_mut)) as.character(uk
 ukncri_mut$Gene_Group <- assign_gene_group(ukncri_mut$Gene, ukncri_mut$variant_type, ukncri_mut$AA_change)
 
 # UK-NCRI FLT3 ITD / TKD / other from aml_molecular_bdp.tsv (not in UK_NCRI_Mutations_data.csv)
-# File has 155 fields per row: first = sample ID (no header), rest = 154 gene/feature columns
+# When aml_molecular_bdp.tsv is not found, fall back to UK_NCRI_Clinical_data.csv if it has FLT3_ITD / FLT3_TKD / FLT3_other columns
 bdp_path <- file.path(getwd(), "UK_NCRI_data", "data", "aml_molecular_bdp.tsv")
 if (!file.exists(bdp_path)) bdp_path <- file.path(getwd(), "UK_NCRI_data", "aml_molecular_bdp.tsv")
+flt3_added_from_bdp <- FALSE
 if (file.exists(bdp_path)) {
   bdp <- read.table(bdp_path, sep = "", header = TRUE, quote = "\"", check.names = FALSE,
                     row.names = 1)  # first column -> sample ID as row names
@@ -1017,10 +1102,52 @@ if (file.exists(bdp_path)) {
       ukncri_mut <- rbind(ukncri_mut[, c("Sample", "Gene", "VAF", "variant_type", "Cohort", "AA_change", "Gene_Group")],
                           as.data.frame(extra, stringsAsFactors = FALSE))
       cat("  UK-NCRI: added ", length(extra$Sample), " FLT3 ITD/TKD/Other rows from aml_molecular_bdp.tsv\n", sep = "")
+      flt3_added_from_bdp <- TRUE
     }
   }
-} else {
-  cat("  UK-NCRI: aml_molecular_bdp.tsv not found; FLT3 ITD/TKD/Other not added\n", sep = "")
+}
+if (!flt3_added_from_bdp) {
+  # Fallback: try UK_NCRI_Clinical_data.csv for FLT3 columns (when aml_molecular_bdp.tsv not downloaded)
+  clin_sample <- as.character(ukncri_clin[, 1])
+  cn <- colnames(ukncri_clin)
+  itd_c <- grep("^FLT3_ITD$|^ITD$", cn, ignore.case = TRUE, value = TRUE)[1]
+  tkd_c <- grep("^FLT3_TKD$|^TKD$", cn, ignore.case = TRUE, value = TRUE)[1]
+  oth_c <- grep("^FLT3_other$", cn, ignore.case = TRUE, value = TRUE)[1]
+  if ((length(itd_c) && !is.na(itd_c)) || (length(tkd_c) && !is.na(tkd_c)) || (length(oth_c) && !is.na(oth_c))) {
+    existing_sg <- paste(ukncri_mut$Sample, ukncri_mut$Gene, sep = "|")
+    ukncri_mut_cols <- c("Sample", "Gene", "VAF", "variant_type", "Cohort", "AA_change", "Gene_Group")
+    specs <- list(
+      list(col = itd_c, Gene = "FLT3-ITD", variant_type = "ITD", Gene_Group = "FLT3_ITD"),
+      list(col = tkd_c, Gene = "FLT3-TKD", variant_type = "SNV", Gene_Group = "FLT3_TKD"),
+      list(col = oth_c, Gene = "FLT3-Other", variant_type = "Other", Gene_Group = "FLT3_other")
+    )
+    for (sp in specs) {
+      if (length(sp$col) == 0 || is.na(sp$col)) next
+      val <- as.numeric(ukncri_clin[[sp$col]])
+      pos <- which(!is.na(val) & val == 1)
+      if (length(pos) == 0) next
+      samp <- clin_sample[pos]
+      to_add <- !(paste(samp, sp$Gene, sep = "|") %in% existing_sg)
+      if (any(to_add)) {
+        add_samp <- samp[to_add]
+        extra <- data.frame(
+          Sample = add_samp,
+          Gene = sp$Gene,
+          VAF = NA_real_,
+          variant_type = sp$variant_type,
+          Cohort = "UK-NCRI",
+          AA_change = NA_character_,
+          Gene_Group = sp$Gene_Group,
+          stringsAsFactors = FALSE
+        )
+        ukncri_mut <- rbind(ukncri_mut[, ukncri_mut_cols], extra)
+        existing_sg <- c(existing_sg, paste(extra$Sample, extra$Gene, sep = "|"))
+        cat("  UK-NCRI: added ", nrow(extra), " ", sp$Gene, " from UK_NCRI_Clinical_data.csv (", sp$col, ")\n", sep = "")
+      }
+    }
+  } else {
+    cat("  UK-NCRI: aml_molecular_bdp.tsv not found and UK_NCRI_Clinical_data.csv has no FLT3_ITD/FLT3_TKD/FLT3_other columns; add aml_molecular_bdp.tsv to UK_NCRI_data/ or UK_NCRI_data/data/ for FLT3 ITD/TKD/Other\n", sep = "")
+  }
 }
 
 # UK-NCRI clinical: first column (sample ID), secondary, age, gender (see UK_NCRI_data/data: ahd=0 <-> secondary=1 = de novo)

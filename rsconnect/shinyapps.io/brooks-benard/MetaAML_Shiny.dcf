@@ -5,6 +5,6 @@ account: brooks-benard
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16667348
-bundleId: 11601426
+bundleId: 11621132
 url: https://brooks-benard.shinyapps.io/MetaAML_Shiny/
 version: 1
