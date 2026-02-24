@@ -57,8 +57,18 @@ if (file.exists(pat_path) && file.exists(samp_path)) {
   else if ("Platelet count preresection" %in% colnames(m)) tcga_clin$Platelet <- as.character(m$`Platelet count preresection`)
   if ("BLAST_COUNT" %in% colnames(m)) tcga_clin$BM_blasts <- as.character(m$BLAST_COUNT)
   else if ("Blast Count" %in% colnames(m)) tcga_clin$BM_blasts <- as.character(m$`Blast Count`)
-  if ("CYTOGENETIC_ABNORMALITY_TYPE" %in% colnames(m)) tcga_clin$Karyotype <- as.character(m$CYTOGENETIC_ABNORMALITY_TYPE)
-  else if ("Cytogenetic abnormality type" %in% colnames(m)) tcga_clin$Karyotype <- as.character(m$`Cytogenetic abnormality type`)
+  # Simplify TCGA cytogenetics to Normal / Complex / Other/Unknown
+  raw_karyo <- NA_character_
+  if ("CYTOGENETIC_ABNORMALITY_TYPE" %in% colnames(m)) raw_karyo <- as.character(m$CYTOGENETIC_ABNORMALITY_TYPE)
+  else if ("Cytogenetic abnormality type" %in% colnames(m)) raw_karyo <- as.character(m$`Cytogenetic abnormality type`)
+  raw_karyo[is.na(raw_karyo) | raw_karyo == "" | raw_karyo == "[Not Available]"] <- NA_character_
+  simp_karyo <- rep("Other/Unknown", length(raw_karyo))
+  is_complex <- !is.na(raw_karyo) & (grepl("complex", raw_karyo, ignore.case = TRUE) | grepl(">=\\s*3", raw_karyo))
+  simp_karyo[is_complex] <- "Complex"
+  # Normal only if the string is exactly 'Normal' (case/whitespace-insensitive)
+  is_normal <- !is.na(raw_karyo) & (tolower(trimws(raw_karyo)) == "normal")
+  simp_karyo[!is_complex & is_normal] <- "Normal"
+  tcga_clin$Karyotype <- simp_karyo
   tcga_clin$source_file <- "laml_tcga/data_clinical_patient.txt + data_clinical_sample.txt"
 }
 
@@ -84,14 +94,43 @@ if (file.exists(beat_path) && requireNamespace("readxl", quietly = TRUE)) {
     if ("isDenovo" %in% colnames(b_sub)) beat_clin$AML_type[as.character(b_sub$isDenovo) %in% c("TRUE", "True", "1")] <- "De novo"
     if ("isTransformed" %in% colnames(b_sub)) beat_clin$AML_type[as.character(b_sub$isTransformed) %in% c("TRUE", "True", "1")] <- "Secondary"
     if ("ELN2017" %in% colnames(b_sub)) beat_clin$ELN_risk <- as.character(b_sub$ELN2017)
-    if ("overallSurvival" %in% colnames(b_sub)) beat_clin$Time_to_OS_years <- as.character(round(suppressWarnings(as.numeric(b_sub$overallSurvival)), 2))
+    if ("overallSurvival" %in% colnames(b_sub)) {
+      os_days <- suppressWarnings(as.numeric(b_sub$overallSurvival))
+      beat_clin$Time_to_OS_years <- as.character(round(os_days / 365.25, 2))
+    }
     if ("vitalStatus" %in% colnames(b_sub)) beat_clin$OS_status <- ifelse(grepl("dead|deceased", as.character(b_sub$vitalStatus), ignore.case = TRUE), "1", "0")
     if ("wbcCount" %in% colnames(b_sub)) beat_clin$WBC <- as.character(b_sub$wbcCount)
     if ("hemoglobin" %in% colnames(b_sub)) beat_clin$Hemoglobin <- as.character(b_sub$hemoglobin)
     if ("plateletCount" %in% colnames(b_sub)) beat_clin$Platelet <- as.character(b_sub$plateletCount)
     if ("%.Blasts.in.BM" %in% colnames(b_sub)) beat_clin$BM_blasts <- as.character(b_sub$`%.Blasts.in.BM`)
     if ("%.Blasts.in.PB" %in% colnames(b_sub)) beat_clin$PB_blasts <- as.character(b_sub$`%.Blasts.in.PB`)
-    if ("karyotype" %in% colnames(b_sub)) beat_clin$Karyotype <- as.character(b_sub$karyotype)
+    # Simplify Beat AML cytogenetics to Normal / Complex / Other/Unknown
+    if ("karyotype" %in% colnames(b_sub)) {
+      raw_karyo <- as.character(b_sub$karyotype)
+      raw_karyo[is.na(raw_karyo) | raw_karyo == ""] <- NA_character_
+      simp_karyo <- rep("Other/Unknown", length(raw_karyo))
+      is_normal <- !is.na(raw_karyo) & grepl("^46,(XX|XY)(\\[[0-9]+\\])?$", trimws(raw_karyo), ignore.case = TRUE)
+      simp_karyo[is_normal] <- "Normal"
+
+      # Approximate complex as >=3 abnormality markers in the ISCN string
+      abnormality_count <- rep(NA_integer_, length(raw_karyo))
+      has_val <- !is.na(raw_karyo)
+      if (any(has_val)) {
+        s <- tolower(raw_karyo[has_val])
+        markers <- gregexpr("t\\(|inv\\(|del\\(|dup\\(|add\\(|der\\(|dic\\(|ins\\(|i\\(|r\\(|\\+[0-9xy]+|-([0-9xy]+)|mar|idem|trp", s, perl = TRUE)
+        abnormality_count[has_val] <- vapply(markers, function(m) if (length(m) == 1 && m[1] == -1) 0L else length(m), integer(1))
+      }
+      is_complex <- !is_normal & !is.na(abnormality_count) & abnormality_count >= 3
+
+      # Also treat explicit "complex" text as complex if available
+      if ("otherCytogenetics" %in% colnames(b_sub)) {
+        oc <- as.character(b_sub$otherCytogenetics)
+        oc[is.na(oc) | oc == ""] <- NA_character_
+        is_complex <- is_complex | (!is.na(oc) & grepl("complex", oc, ignore.case = TRUE))
+      }
+      simp_karyo[is_complex] <- "Complex"
+      beat_clin$Karyotype <- simp_karyo
+    }
     beat_clin$source_file <- "beataml2_data/beataml_wv1to4_clinical.xlsx"
   }
 }
@@ -214,8 +253,23 @@ if (length(ncri_ids) > 0) {
     }
     if ("os" %in% colnames(prog)) ncri_clin$Time_to_OS_years <- as.character(prog$os[idx])
     if ("os_status" %in% colnames(prog)) ncri_clin$OS_status <- as.character(prog$os_status[idx])
-    if ("complex" %in% colnames(prog)) {
-      comp <- as.numeric(prog$complex[idx])
+    # Karyotype assignment from cytogenetic flags in aml_prognosis_updated.tsv:
+    # - Complex if complex==1
+    # - Normal if no cytogenetic abnormality flags are present
+    # - Other/Unknown otherwise
+    cyto_cols <- grep("^(add_|del_|t_|inv_|minus)|^(others_transloc|complex)$", colnames(prog), value = TRUE)
+    if (length(cyto_cols) > 0) {
+      cyto_mat <- suppressWarnings(sapply(prog[idx, cyto_cols, drop = FALSE], function(x) as.numeric(as.character(x))))
+      cyto_mat <- as.matrix(cyto_mat)
+      abnormal <- rowSums(cyto_mat == 1, na.rm = TRUE) > 0
+      ncri_clin$Karyotype <- "Other/Unknown"
+      ncri_clin$Karyotype[!abnormal] <- "Normal"
+      if ("complex" %in% colnames(prog)) {
+        comp <- suppressWarnings(as.numeric(as.character(prog$complex[idx])))
+        ncri_clin$Karyotype[!is.na(comp) & comp == 1] <- "Complex"
+      }
+    } else if ("complex" %in% colnames(prog)) {
+      comp <- suppressWarnings(as.numeric(as.character(prog$complex[idx])))
       ncri_clin$Karyotype <- "Other/Unknown"
       ncri_clin$Karyotype[!is.na(comp) & comp == 1] <- "Complex"
     }
