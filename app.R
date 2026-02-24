@@ -1,10 +1,6 @@
 # =============================================================================
 # Meta AML Explorer - Shiny App for Exploratory Analysis of AML Mutational Data
-# Based on Benard et al. Nature Communications 2021
 # Uses base R only to avoid data.table/dplyr "Argument 'x' is not a vector: list" errors
-# NOTE: Benard et al. (2021) tab and final_data_matrix loading are commented out for a
-# simplified deploy; uncomment the block marked "Benard et al. (2021) data" and the
-# "Benard et al. (2021)" tabPanel to re-enable.
 # =============================================================================
 
 library(shiny)
@@ -38,43 +34,10 @@ if (has_httr) library(httr)
 has_UpSetR <- requireNamespace("UpSetR", quietly = TRUE)
 if (has_UpSetR) library(UpSetR)
 
-# ---- Benard et al. (2021) data: commented out for simplified deploy (re-enable to add Benard tab) ----
-# Load data (app expects final_data_matrix.RData in the same directory as app.R)
-# data_path <- file.path(getwd(), "final_data_matrix.RData")
-# if (!file.exists(data_path)) {
-#   stop("Data file not found. Place final_data_matrix.RData in the app directory and run the app from that directory.\n  Looked for: ", normalizePath(data_path, mustWork = FALSE))
-# }
-# load(data_path)
-# # Convert to plain data.frame - CSV round-trip strips data.table/list columns
-# tmp <- tempfile(fileext = ".csv")
-# utils::write.csv(final_data_matrix, tmp, row.names = FALSE)
-# final_data_matrix <- utils::read.csv(tmp, stringsAsFactors = FALSE)
-# unlink(tmp)
-# # Assign RTK-RAS Signaling to all FLT3 mutations if they lack mutation_category; homogenize RTK/RAS -> RTK-RAS
-# if ("mutation_category" %in% colnames(final_data_matrix) && "Gene" %in% colnames(final_data_matrix)) {
-#   final_data_matrix$mutation_category[final_data_matrix$mutation_category %in% c("RTK/RAS Signaling", "RTK-RAS Signaling")] <- "RTK-RAS Signaling"
-#   flt3_idx <- which(final_data_matrix$Gene %in% c("FLT3", "FLT3-ITD", "FLT3-TKD", "FLT3-Other") &
-#                     (is.na(final_data_matrix$mutation_category) | final_data_matrix$mutation_category == ""))
-#   if (length(flt3_idx) > 0) {
-#     final_data_matrix$mutation_category[flt3_idx] <- "RTK-RAS Signaling"
-#   }
-# }
-# # Normalize Cohort and Subset for display across the app (Beat_AML -> Beat AML; de_novo -> De novo, etc.)
-# if ("Cohort" %in% colnames(final_data_matrix)) {
-#   final_data_matrix$Cohort[final_data_matrix$Cohort == "Beat_AML"] <- "Beat AML"
-# }
-# if ("Subset" %in% colnames(final_data_matrix)) {
-#   final_data_matrix$Subset[is.na(final_data_matrix$Subset) | final_data_matrix$Subset == ""] <- "Other"
-#   final_data_matrix$Subset[final_data_matrix$Subset %in% c("de_novo", "De_novo")] <- "De novo"
-#   final_data_matrix$Subset[final_data_matrix$Subset == "secondary"] <- "Secondary"
-#   final_data_matrix$Subset[final_data_matrix$Subset == "relapse"] <- "Relapse"
-#   final_data_matrix$Subset[final_data_matrix$Subset %in% c("therapy", "tAML")] <- "Therapy"
-#   final_data_matrix$Subset[final_data_matrix$Subset %in% c("other", "oAML", "unknown", "")] <- "Other"
-# }
-# Stub when Benard tab is disabled (sidebar Cohort dropdown will show "All" only; Meta AML4 uses its own data)
+# Empty stub for legacy references (sidebar Cohort dropdown shows "All" only; Meta AML4 uses its own data)
 final_data_matrix <- data.frame(Sample = character(), Gene = character(), Gene_for_analysis = character(), Cohort = character(), Subset = character(), mutation_category = character(), stringsAsFactors = FALSE)
 
-# Normalize AML_Meta_Cohort to match final_data_matrix column names so existing analyses work
+# Normalize AML_Meta_Cohort column names for the app
 normalize_AML_Meta_Cohort <- function(d) {
   d <- as.data.frame(d, stringsAsFactors = FALSE)
   # Map source columns -> app column names (select + rename)
@@ -320,7 +283,9 @@ normalize_AML_Meta_Cohort <- function(d) {
     d$Karyotype[is.na(d$Karyotype) | d$Karyotype == ""] <- "Unknown"
   } else d$Karyotype <- "Unknown"
   # Keep only columns the app uses (drop extras to avoid confusion); include protein mutation cols for lollipop
-  want <- c("Sample", "Gene", "VAF", "Cohort", "Subset", "Time_to_OS", "Censor", "variant_type",
+  if ("CCF" %in% colnames(d)) d$CCF <- as.numeric(d$CCF)
+  if ("CN_at_locus" %in% colnames(d)) d$CN_at_locus <- as.integer(d$CN_at_locus)
+  want <- c("Sample", "Gene", "VAF", "CCF", "CN_at_locus", "Cohort", "Subset", "Time_to_OS", "Censor", "variant_type",
     "mutation_category", "AA_change", "HGVSp_Short", "Protein_Change", "protein", "Gene_Group", "Age", "Sex", "Risk", "Karyotype", "WBC", "Hemoglobin", "Platelet", "LDH", "BM_blast_percent", "PB_blast_percent")
   keep <- want[want %in% colnames(d)]
   d <- d[, keep, drop = FALSE]
@@ -346,7 +311,7 @@ GENE_MUT_CAT_FALLBACK <- c(
   RUNX1 = "Transcription", CEBPA = "Transcription", NPM1 = "NPM1"
 )
 
-# Load AML_Meta_Cohort_v2 (four cohorts merged) for Meta AML4 tab; fallback to v1 or final_data_matrix if missing
+# Load AML_Meta_Cohort_v2 (four cohorts merged) for Meta AML4 tab; fallback to v1
 AML_Meta_Cohort <- NULL
 meta4_uses_dedicated_file <- FALSE
 # Try v2 first (built from raw data sources)
@@ -373,26 +338,7 @@ if (file.exists(meta4_path_v2)) {
 if (!is.null(AML_Meta_Cohort) && is.data.frame(AML_Meta_Cohort)) {
   AML_Meta_Cohort <- normalize_AML_Meta_Cohort(AML_Meta_Cohort)
   if (!"mutation_category" %in% colnames(AML_Meta_Cohort)) AML_Meta_Cohort$mutation_category <- NA_character_
-  # Classify genes in Meta AML4 using same mutation_category as Benard et al. (2021) (final_data_matrix)
-  ref <- final_data_matrix[!is.na(final_data_matrix$mutation_category) & as.character(final_data_matrix$mutation_category) != "", c("Gene", "mutation_category"), drop = FALSE]
-  if (nrow(ref) > 0) {
-    ref$Gene <- as.character(ref$Gene)
-    ref$mutation_category <- as.character(ref$mutation_category)
-    most_common <- aggregate(mutation_category ~ Gene, data = ref, FUN = function(x) names(sort(table(x), decreasing = TRUE))[1])
-    gene_to_cat <- setNames(as.character(most_common$mutation_category), as.character(most_common$Gene))
-    AML_Meta_Cohort$mutation_category <- unname(gene_to_cat[as.character(AML_Meta_Cohort$Gene)])
-    # Homogenize RTK/RAS -> RTK-RAS Signaling and assign to all FLT3 mutations
-    AML_Meta_Cohort$mutation_category[AML_Meta_Cohort$mutation_category %in% c("RTK/RAS Signaling", "RTK-RAS Signaling")] <- "RTK-RAS Signaling"
-    flt3_idx <- which(AML_Meta_Cohort$Gene %in% c("FLT3", "FLT3-ITD", "FLT3-TKD", "FLT3-Other"))
-    if (length(flt3_idx) > 0) {
-      AML_Meta_Cohort$mutation_category[flt3_idx] <- "RTK-RAS Signaling"
-    }
-    mll_idx <- which(AML_Meta_Cohort$Gene == "MLL")
-    if (length(mll_idx) > 0) {
-      AML_Meta_Cohort$mutation_category[mll_idx] <- "Chromatin/Cohesin"
-    }
-  }
-  # Fill missing mutation_category from fallback (e.g. SMC3, ASXL2, FBXW7) so all genes are colored in plots
+  # Assign mutation_category from GENE_MUT_CAT_FALLBACK lookup
   miss <- is.na(AML_Meta_Cohort$mutation_category) | as.character(AML_Meta_Cohort$mutation_category) == ""
   if (any(miss)) {
     g <- as.character(AML_Meta_Cohort$Gene[miss])
@@ -406,7 +352,72 @@ utils::write.csv(AML_Meta_Cohort, tmp2, row.names = FALSE)
 AML_Meta_Cohort <- utils::read.csv(tmp2, stringsAsFactors = FALSE)
 unlink(tmp2)
 
-# Paper color palettes (Benard et al. Nat Commun 2021)
+# Gene -> chromosome arm mapping for CCF computation (used at runtime if CCF not in RDS)
+GENE_CHR_MAP <- c(
+  DNMT3A = "2p", IDH1 = "2q", SF3B1 = "2q",
+  GATA2 = "3q",
+  TET2 = "4q", KIT = "4q",
+  NPM1 = "5q",
+  ETV6 = "12p", KRAS = "12p",
+  EZH2 = "7q",
+  RAD21 = "8q",
+  JAK2 = "9p", CDKN2A = "9p",
+  SMC3 = "10q",
+  WT1 = "11p", CBL = "11q", MLL = "11q", KMT2A = "11q", ATM = "11q",
+  PTPN11 = "12q",
+  FLT3 = "13q", "FLT3-ITD" = "13q", "FLT3-TKD" = "13q", "FLT3-Other" = "13q",
+  IDH2 = "15q",
+  CBFB = "16q",
+  TP53 = "17p", NF1 = "17q", SRSF2 = "17q",
+  SETBP1 = "18q",
+  CEBPA = "19q",
+  ASXL1 = "20q",
+  RUNX1 = "21q", U2AF1 = "21q",
+  NRAS = "1p", BCOR = "Xp", SMC1A = "Xp", KDM6A = "Xp", ZRSR2 = "Xp",
+  STAG2 = "Xq", BCORL1 = "Xq", PHF6 = "Xq", ATRX = "Xq",
+  ASXL2 = "2p", CSF3R = "1p", FBXW7 = "4q", PIGA = "Xp",
+  IKZF1 = "7p", BRAF = "7q", JAK3 = "19p", MPL = "1p", CBLB = "3q"
+)
+
+# Runtime CCF computation for data that lacks precomputed CCF
+# Assumes diploid CN=2 for autosomes, CN=1 for male X-linked genes
+compute_ccf_runtime <- function(df) {
+  if (!"VAF" %in% colnames(df)) return(df)
+  n <- nrow(df)
+  ccf <- rep(NA_real_, n)
+  cn_used <- rep(NA_integer_, n)
+  sex_col <- if ("Sex" %in% colnames(df)) df$Sex else rep(NA_character_, n)
+  gene_col <- as.character(df$Gene)
+  vaf_col <- df$VAF
+
+  for (i in seq_len(n)) {
+    vaf <- vaf_col[i]
+    if (is.na(vaf)) next
+    gene <- gene_col[i]
+    sex <- as.character(sex_col[i])
+    chr_arm <- GENE_CHR_MAP[gene]
+    if (is.na(chr_arm)) {
+      cn <- 2L
+    } else {
+      chr_num <- sub("[pq]$", "", chr_arm)
+      if (chr_num == "X" && !is.na(sex) && sex == "Male") cn <- 1L
+      else if (chr_num == "Y") cn <- ifelse(!is.na(sex) && sex == "Male", 1L, 0L)
+      else cn <- 2L
+    }
+    cn_used[i] <- cn
+    if (cn > 0) ccf[i] <- min(vaf / 100 * cn * 100, 100)
+  }
+  df$CCF <- round(ccf, 2)
+  df$CN_at_locus <- cn_used
+  df
+}
+
+# Compute CCF at runtime if not already present in the loaded data
+if (!"CCF" %in% colnames(AML_Meta_Cohort) && "VAF" %in% colnames(AML_Meta_Cohort)) {
+  AML_Meta_Cohort <- compute_ccf_runtime(AML_Meta_Cohort)
+}
+
+# Color palettes
 PAL_COHORT <- c(
   Tyner = "#0073C2FF", TCGA = "#EFC000FF", Majeti = "#868686FF", Papaemmanuil = "#CD534CFF",
   Lindsley = "#7AA6DCFF", Wang = "#E64B35FF", Au = "#4DBBD5FF", Welch = "#00A087FF",
@@ -591,11 +602,7 @@ ui <- fluidPage(
     })();
   ")),
   div(class = "app-banner",
-    div(class = "banner-title", "Meta AML Explorer"),
-    div(class = "banner-contact",
-      tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"),
-      tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Contact", title = "Contact")
-    )
+    div(class = "banner-title", "Meta AML Explorer")
   ),
   tabsetPanel(
     id = "main_nav",
@@ -619,16 +626,18 @@ ui <- fluidPage(
           p(style = "margin: 4px 0; line-height: 1.6;", strong("Beat AML"), " (805 patients) | ", tags$a("Tyner et al. (2022), Cancer Cell", href = "https://www.cell.com/cancer-cell/fulltext/S1535-6108(22)00312-9", target = "_blank"), " | ", tags$a("Data", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           p(style = "margin: 4px 0; line-height: 1.6; margin-bottom: 0;", strong("TCGA LAML"), " (200 patients) | ", tags$a("NEJM", href = "https://www.nejm.org/doi/full/10.1056/NEJMoa1301689", target = "_blank"), " | ", tags$a("Data", href = "https://www.cbioportal.org/", target = "_blank"))
         ),
-        # ---- Benard et al. (2021) tab: commented out for simplified deploy (re-enable with data load above) ----
-        # h2("Benard et al. (2021) tab"),
-        # p("Data from ", strong("Benard et al. (2021)"), " ", em("Clonal architecture predicts clinical outcomes and drug sensitivity in acute myeloid leukemia."), " Nature Communications | ", tags$a("Paper", href = "https://www.nature.com/articles/s41467-021-27472-5", target = "_blank")),
-        # p("The paper aggregates mutation calls, variant allele frequencies (VAF), and clinical outcomes from ~2,800 patients across 12 cohorts (TCGA, Beat AML/Tyner, Papaemmanuil, Majeti, and others) to link clonal architecture to prognosis and therapy response."),
         h2("Caveats"),
         p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
-        p("The current implementation does not account for copy number correction of variant allele frequencies (VAFs). A future implementation will incorporate copy number data to define and use cancer cell fractions of mutations instead of VAFs."),
-        p("Available cytogenetic data will be incorporated in a future version."),
+        p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity."),
         h2("About the author"),
-        p("Brooks Benard, Stanford University. ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"), " · ", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu")),
+        div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 10px;",
+          tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
+          div(
+            p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
+            p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
+            p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
+          )
+        ),
         hr(),
         p(style = "font-size: 0.9em; color: #666;",
           "© ", format(Sys.Date(), "%Y"), " Brooks Benard. Licensed under ",
@@ -642,7 +651,9 @@ ui <- fluidPage(
         sidebarLayout(
           sidebarPanel(
             width = 2,
-            h4("Select cohort for analysis:"),
+            div(style = "background: #2c3e50; color: #fff; padding: 12px 14px; margin: -15px -15px 15px -15px; border-radius: 4px 4px 0 0;",
+              h4(style = "margin: 0; font-weight: 700; font-size: 1.15em;", "Select cohort for analysis:")
+            ),
             selectInput("subset", "AML Subset:", 
               choices = c("All", "De novo", "Secondary", "Relapse", "Therapy", "Other"), selected = "De novo"),
             selectInput("cohort", "Dataset:", 
@@ -653,13 +664,14 @@ ui <- fluidPage(
               }), selected = "All"),
             selectInput("karyotype", "Karyotype:", 
               choices = c("All", "Complex", "Normal", "Other", "Unknown"), selected = "All"),
-            sliderInput("min_gene_pct", "Min. gene frequency (% of samples):", min = 1, max = 100, value = 5, step = 1),
+            radioButtons("vaf_metric", "Allele metric:",
+              choices = c("VAF" = "VAF", "CCF" = "CCF"), selected = "VAF", inline = TRUE),
             conditionalPanel(
               condition = "input.main_nav === 'meta_aml4'",
               hr(),
-              p(strong("Only interested in a specific gene?")),
-              wellPanel(style = "background: #eaecef;",
-                h5("Summarize all associations for a single gene:"),
+              div(style = "border-left: 3px solid #95a5a6; padding-left: 12px; margin-top: 8px; margin-bottom: 4px;",
+                p(style = "margin: 0 0 6px 0; font-weight: 600; color: #34495e;", "Only interested in a specific gene?"),
+                p(style = "margin: 0 0 8px 0; font-size: 13px; color: #5d6d7e;", "Summarize all associations for a single gene:"),
                 selectInput("gene_summary", NULL, choices = c("Select gene..." = ""), selected = "")
               )
             )
@@ -672,7 +684,6 @@ ui <- fluidPage(
         )
       )
     )
-    # tabPanel("Benard et al. (2021)", value = "analyses"),  # Commented out for simplified deploy; re-enable with Benard data load at top of app
   )
 )
 
@@ -744,16 +755,24 @@ server <- function(input, output, session) {
         c("Select gene..." = "", setNames(genes, genes))
       }
       current_tab <- selected_meta4_tab()
-      if (is.null(current_tab) || !current_tab %in% c("Overview", "All Gene Associations", "Single Gene Associations")) current_tab <- "Overview"
+      if (is.null(current_tab) || !current_tab %in% c("Cohort Overview", "All Gene Associations", "Single Gene Associations")) current_tab <- "Cohort Overview"
       inner_tab <- selected_meta4_allgene_tab()
       if (is.null(inner_tab) || !inner_tab %in% c("Single", "Co-mutation", "VAF", "Drug Sensitivity")) inner_tab <- "Single"
       tabsetPanel(
         id = "main_tabs_meta4",
         selected = current_tab,
-        tabPanel("Overview",
+        tabPanel("Cohort Overview",
           fluidRow(
-            column(4, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
-            column(8, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
+            column(3, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
+            column(9, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
+          ),
+          fluidRow(
+            column(6, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 400))),
+            column(6, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 400)))
+          ),
+          fluidRow(
+            column(6, wellPanel(h4("ELN Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 400))),
+            column(6, wellPanel(h4("Recurrently Mutated Genes"), p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Genes mutated in more than 1% of samples."), plotOutput("overview_gene_freq_plot", height = 400)))
           )
         ),
         tabPanel("All Gene Associations",
@@ -775,73 +794,97 @@ server <- function(input, output, session) {
               fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini–Hochberg)."), DTOutput("survival_table"))))
             ),
             tabPanel("Co-mutation", value = "Co-mutation",
-              fluidRow(
-                column(12, wellPanel(
-                  fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
-                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
-                  plotOutput("oncoprint_plot", height = 500)
-                ))
-              ),
-              fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
-                column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
-              ),
-              fluidRow(
-                column(12, wellPanel(
-                  fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
+              tabsetPanel(
+                tabPanel("Oncoprint",
                   fluidRow(
-                    column(4,
-                      div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                        h5(style = "margin-top: 0;", "Gene Selection"),
-                        radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
-                        selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
-                        selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
-                        conditionalPanel(condition = "input.comut_n == 3",
-                          selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
-                      ),
-                      div(style = "margin-top: 12px;",
-                        h5("Mutation Intersection (UpSet Plot)", style = "margin-top: 0;"),
-                        p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Overlap of the selected genes across samples."),
-                        plotOutput("upset_plot", height = 350),
-                        div(style = "margin-top: 4px;", downloadButton("download_upset_plot", "Download plot"))
-                      )
-                    ),
-                    column(8, uiOutput("comut_survival_plot_ui"))
+                    column(12, wellPanel(
+                      fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
+                      p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+                      plotOutput("oncoprint_plot", height = 500)
+                    ))
                   )
-                ))
+                ),
+                tabPanel("Odds Ratio and Survival",
+                  fluidRow(
+                    column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+                    column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+                  ),
+                  fluidRow(
+                    column(12, wellPanel(
+                      fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
+                      fluidRow(
+                        column(4,
+                          div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
+                            h5(style = "margin-top: 0;", "Gene Selection"),
+                            radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                            selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
+                            selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
+                            conditionalPanel(condition = "input.comut_n == 3",
+                              selectInput("comut_gene3", "Gene 3:", choices = gene_choices))
+                          ),
+                          div(style = "margin-top: 12px;",
+                            h5("Mutation Intersection (UpSet Plot)", style = "margin-top: 0;"),
+                            p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Overlap of the selected genes across samples."),
+                            plotOutput("upset_plot", height = 350),
+                            div(style = "margin-top: 4px;", downloadButton("download_upset_plot", "Download plot"))
+                          )
+                        ),
+                        column(8, uiOutput("comut_survival_plot_ui"))
+                      )
+                    ))
+                  )
+                )
               )
             ),
-            tabPanel("VAF", value = "VAF",
+            tabPanel("Clonality", value = "VAF",
               tabsetPanel(
                 tabPanel("Single Gene",
                   fluidRow(
-                    column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 500))),
                     column(6, wellPanel(
-                      h4("VAF and Survival: Hazard Ratios (MaxStat)"),
-                      p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with ≥20 mutated samples with VAF and survival only.")),
+                      fluidRow(column(8, h4("VAF / CCF by Gene")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_gene_plot", "Download plot")))),
+                      plotOutput("vaf_gene_plot", height = 500))),
+                    column(6, wellPanel(
+                      fluidRow(column(8, h4("VAF / CCF and Survival: Hazard Ratios (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_survival_plot", "Download plot")))),
+                      p(em("HR and 95% CI from Cox model using optimal MaxStat threshold per gene. Threshold computed from the selected allele metric (VAF or CCF). Genes with \u226520 mutated samples only.")),
                       plotOutput("vaf_survival_plot", height = 450)))
                   ),
                   fluidRow(
-                    column(6, wellPanel(h4("VAF by Mutation Category"), plotOutput("vaf_category_plot", height = 450))),
                     column(6, wellPanel(
-                      fluidRow(column(8, h4("Mutation HR vs MaxStat VAF HR")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_hr_vs_maxstat_plot", "Download plot")))),
+                      fluidRow(column(8, h4("VAF / CCF by Mutation Category")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_category_plot", "Download plot")))),
+                      plotOutput("vaf_category_plot", height = 450))),
+                    column(6, wellPanel(
+                      fluidRow(column(8, h4("Mutation HR vs MaxStat VAF/CCF HR")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_hr_vs_maxstat_plot", "Download plot")))),
                       p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Each point is a gene. Y-axis: mutation HR (mutated vs WT). X-axis: MaxStat VAF HR (high vs low VAF). Point size reflects optimal VAF cutpoint; color indicates significance (FDR q < 0.1)."),
                       plotOutput("hr_vs_maxstat_plot", height = 400)
                     ))
                   ),
                   fluidRow(
-                    column(6, wellPanel(h4("VAF Distribution by Dataset"), plotOutput("vaf_cohort_plot", height = 450)))
+                    column(6, wellPanel(
+                      fluidRow(column(8, h4("VAF / CCF Distribution by Dataset")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_cohort_plot", "Download plot")))),
+                      plotOutput("vaf_cohort_plot", height = 450)))
                   )
                 ),
                 tabPanel("Pairwise Gene",
                   fluidRow(
-                    column(6, wellPanel(h4("VAF Scatter (Clonal Ordering)"),
+                    column(6, wellPanel(h4("VAF / CCF Scatter (Clonal Ordering)"),
                       p("Compare VAF of two genes. Points above line = Gene 1 before Gene 2."),
                       selectInput("vaf_gene1", "Gene 1:", choices = gene_choices), selectInput("vaf_gene2", "Gene 2:", choices = gene_choices),
                       plotOutput("vaf_scatter_plot", height = 450))),
                     column(6, wellPanel(h4("Survival by Clonal Order"),
                       p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Kaplan-Meier comparing patients where Gene 1 has higher VAF (acquired first) vs Gene 2 has higher VAF (acquired first)."),
                       plotOutput("vaf_clonal_km_plot", height = 450)))
+                  ),
+                  fluidRow(
+                    column(6, wellPanel(
+                      fluidRow(column(8, h4("Clonal Ordering Survival: All Gene Pairs")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clonal_hr_summary_plot", "Download plot")))),
+                      p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Cox HR (95% CI) comparing survival when Gene A is clonally dominant vs Gene B, for all co-mutated gene pairs with \u226510 non-ambiguous orderings per group. Point size reflects total non-ambiguous cases."),
+                      plotOutput("clonal_hr_summary_plot", height = 600)
+                    )),
+                    column(6, wellPanel(
+                      fluidRow(column(8, h4("VAF vs CCF")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_vs_ccf_plot", "Download plot")))),
+                      p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Each point is a mutation. Diagonal = CCF equals VAF (diploid, CN = 2). Points above the diagonal have CN > 2 (gain); points below have CN < 2 (loss)."),
+                      plotOutput("vaf_vs_ccf_plot", height = 550)
+                    ))
                   )
                 )
               )
@@ -910,14 +953,22 @@ server <- function(input, output, session) {
         c("Select Gene..." = "", setNames(genes, genes))
       }
       current_analyses_tab <- selected_analyses_tab()
-      if (is.null(current_analyses_tab) || !current_analyses_tab %in% c("Overview", "Single mutation associations", "Co-mutation Associations", "VAF Associations", "Drug Sensitivity")) current_analyses_tab <- "Overview"
+      if (is.null(current_analyses_tab) || !current_analyses_tab %in% c("Cohort Overview", "Single mutation associations", "Co-mutation Associations", "VAF Associations", "Drug Sensitivity")) current_analyses_tab <- "Cohort Overview"
       tabsetPanel(
         id = "main_tabs_analyses",
         selected = current_analyses_tab,
-        tabPanel("Overview",
+        tabPanel("Cohort Overview",
           fluidRow(
-            column(4, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
-            column(8, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
+            column(3, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
+            column(9, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
+          ),
+          fluidRow(
+            column(6, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 400))),
+            column(6, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 400)))
+          ),
+          fluidRow(
+            column(6, wellPanel(h4("ELN Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 400))),
+            column(6, wellPanel(h4("Recurrently Mutated Genes"), p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Genes mutated in more than 1% of samples."), plotOutput("overview_gene_freq_plot", height = 400)))
           ),
           fluidRow(
             column(12, wellPanel(
@@ -942,73 +993,97 @@ server <- function(input, output, session) {
           fluidRow(column(12, wellPanel(fluidRow(column(8, h4("Survival Summary")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_survival_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Cox proportional hazards (mutated vs WT) per gene; genes with ≥10 mutated and ≥10 WT. HR and 95% CI shown. ", em("p_adj"), " = false discovery rate (FDR, Benjamini\u2013Hochberg)."), DTOutput("survival_table"))))
         ),
         tabPanel("Co-mutation Associations",
-          fluidRow(
-            column(12, wellPanel(
-              fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
-              p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
-              plotOutput("oncoprint_plot", height = 500)
-            ))
-          ),
-          fluidRow(
-            column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
-            column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
-          ),
-          fluidRow(
-            column(12, wellPanel(
-              fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
+          tabsetPanel(
+            tabPanel("Oncoprint",
               fluidRow(
-                column(4,
-                  div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                    h5(style = "margin-top: 0;", "Gene Selection"),
-                    radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
-                    selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
-                    selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
-                    conditionalPanel(condition = "input.comut_n == 3",
-                      selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
-                  ),
-                  div(style = "margin-top: 12px;",
-                    h5("Mutation Intersection (UpSet Plot)", style = "margin-top: 0;"),
-                    p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Overlap of the selected genes across samples."),
-                    plotOutput("upset_plot", height = 350),
-                    div(style = "margin-top: 4px;", downloadButton("download_upset_plot", "Download plot"))
-                  )
-                ),
-                column(8, uiOutput("comut_survival_plot_ui"))
+                column(12, wellPanel(
+                  fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+                  plotOutput("oncoprint_plot", height = 500)
+                ))
               )
-            ))
+            ),
+            tabPanel("Odds Ratio and Survival",
+              fluidRow(
+                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), plotOutput("cooccurrence_plot", height = 500))),
+                column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
+              ),
+              fluidRow(
+                column(12, wellPanel(
+                  fluidRow(column(8, h4("Kaplan-Meier by Co-mutation Status")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_comut_survival_plot", "Download plot")))),
+                  fluidRow(
+                    column(4,
+                      div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
+                        h5(style = "margin-top: 0;", "Gene Selection"),
+                        radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                        selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
+                        selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
+                        conditionalPanel(condition = "input.comut_n == 3",
+                          selectInput("comut_gene3", "Gene 3:", choices = gene_choices_analyses))
+                      ),
+                      div(style = "margin-top: 12px;",
+                        h5("Mutation Intersection (UpSet Plot)", style = "margin-top: 0;"),
+                        p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Overlap of the selected genes across samples."),
+                        plotOutput("upset_plot", height = 350),
+                        div(style = "margin-top: 4px;", downloadButton("download_upset_plot", "Download plot"))
+                      )
+                    ),
+                    column(8, uiOutput("comut_survival_plot_ui"))
+                  )
+                ))
+              )
+            )
           )
         ),
-        tabPanel("VAF Associations",
+        tabPanel("Clonality",
           tabsetPanel(
             tabPanel("Single Gene",
               fluidRow(
-                column(6, wellPanel(h4("VAF by Gene"), plotOutput("vaf_gene_plot", height = 500))),
                 column(6, wellPanel(
-                  h4("VAF and Survival: Hazard Ratios (MaxStat)"),
-                  p(em("HR and 95% CI from Cox model (High vs Low VAF) using optimal VAF threshold from maxstat per gene. Genes with \u226520 mutated samples with VAF and survival only.")),
+                  fluidRow(column(8, h4("VAF / CCF by Gene")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_gene_plot", "Download plot")))),
+                  plotOutput("vaf_gene_plot", height = 500))),
+                column(6, wellPanel(
+                  fluidRow(column(8, h4("VAF / CCF and Survival: Hazard Ratios (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_survival_plot", "Download plot")))),
+                  p(em("HR and 95% CI from Cox model using optimal MaxStat threshold per gene. Threshold computed from the selected allele metric (VAF or CCF). Genes with \u226520 mutated samples only.")),
                   plotOutput("vaf_survival_plot", height = 450)))
               ),
               fluidRow(
-                column(6, wellPanel(h4("VAF by Mutation Category"), plotOutput("vaf_category_plot", height = 450))),
                 column(6, wellPanel(
-                  fluidRow(column(8, h4("Mutation HR vs MaxStat VAF HR")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_hr_vs_maxstat_plot", "Download plot")))),
+                  fluidRow(column(8, h4("VAF / CCF by Mutation Category")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_category_plot", "Download plot")))),
+                  plotOutput("vaf_category_plot", height = 450))),
+                column(6, wellPanel(
+                  fluidRow(column(8, h4("Mutation HR vs MaxStat VAF/CCF HR")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_hr_vs_maxstat_plot", "Download plot")))),
                   p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Each point is a gene. Y-axis: mutation HR (mutated vs WT). X-axis: MaxStat VAF HR (high vs low VAF). Point size reflects optimal VAF cutpoint; color indicates significance (FDR q < 0.1)."),
                   plotOutput("hr_vs_maxstat_plot", height = 400)
                 ))
               ),
               fluidRow(
-                column(6, wellPanel(h4("VAF Distribution by Dataset"), plotOutput("vaf_cohort_plot", height = 450)))
+                column(6, wellPanel(
+                  fluidRow(column(8, h4("VAF / CCF Distribution by Dataset")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_cohort_plot", "Download plot")))),
+                  plotOutput("vaf_cohort_plot", height = 450)))
               )
             ),
             tabPanel("Pairwise Gene",
               fluidRow(
-                column(6, wellPanel(h4("VAF Scatter (Clonal Ordering)"),
+                column(6, wellPanel(h4("VAF / CCF Scatter (Clonal Ordering)"),
                   p("Compare VAF of two genes. Points above line = Gene 1 before Gene 2."),
                   selectInput("vaf_gene1", "Gene 1:", choices = gene_choices_analyses), selectInput("vaf_gene2", "Gene 2:", choices = gene_choices_analyses),
                   plotOutput("vaf_scatter_plot", height = 450))),
                 column(6, wellPanel(h4("Survival by Clonal Order"),
                   p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Kaplan-Meier comparing patients where Gene 1 has higher VAF (acquired first) vs Gene 2 has higher VAF (acquired first)."),
                   plotOutput("vaf_clonal_km_plot", height = 450)))
+              ),
+              fluidRow(
+                column(6, wellPanel(
+                  fluidRow(column(8, h4("Clonal Ordering Survival: All Gene Pairs")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_clonal_hr_summary_plot", "Download plot")))),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Cox HR (95% CI) comparing survival when Gene A is clonally dominant vs Gene B, for all co-mutated gene pairs with \u226510 non-ambiguous orderings per group. Point size reflects total non-ambiguous cases."),
+                  plotOutput("clonal_hr_summary_plot", height = 600)
+                )),
+                column(6, wellPanel(
+                  fluidRow(column(8, h4("VAF vs CCF")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_vaf_vs_ccf_plot", "Download plot")))),
+                  p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Each point is a mutation. Diagonal = CCF equals VAF (diploid, CN = 2). Points above the diagonal have CN > 2 (gain); points below have CN < 2 (loss)."),
+                  plotOutput("vaf_vs_ccf_plot", height = 550)
+                ))
               )
             )
           )
@@ -1115,45 +1190,8 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
-  # Update slider max based on maximum gene frequency in filtered dataset
-  observeEvent(c(input$subset, input$cohort, input$karyotype, input$main_nav), {
-    if (!input$main_nav %in% c("analyses", "meta_aml4")) return()
-    req(current_data_src())
-    
-    # Get effective cohort
-    cohorts_in_data <- sort(unique(as.character(na.omit(current_data_src()$Cohort))))
-    co <- input$cohort
-    eff_cohort <- if (is.null(co) || co == "" || !co %in% c("All", cohorts_in_data)) "All" else co
-    
-    # Compute filtered data (without gene frequency filter) to determine max frequency
-    df <- prepare_data(current_data_src())
-    if (!"Gene_for_analysis" %in% colnames(df)) df$Gene_for_analysis <- as.character(df$Gene)
-    if (input$subset != "All") df <- df[as.character(df$Subset) == input$subset, , drop = FALSE]
-    if (eff_cohort != "All") df <- df[as.character(df$Cohort) == eff_cohort, , drop = FALSE]
-    if (!is.null(input$karyotype) && input$karyotype != "All" && "Karyotype" %in% colnames(df)) {
-      df <- df[as.character(df$Karyotype) == input$karyotype, , drop = FALSE]
-    }
-    
-    # Calculate maximum gene frequency percentage (integer 1 to max)
-    n_samples <- length(unique(df$Sample))
-    if (n_samples > 0) {
-      gene_counts <- table(as.character(df$Gene_for_analysis))
-      if (length(gene_counts) > 0) {
-        max_gene_pct <- max((gene_counts / n_samples) * 100)
-        # Max is ceiling of max frequency, at least 1, cap at 100
-        slider_max <- min(100, max(1L, ceiling(max_gene_pct)))
-      } else {
-        slider_max <- 100
-      }
-    } else {
-      slider_max <- 100
-    }
-    
-    # Update slider: min 1, step 1, max = slider_max (preserve current value if valid)
-    current_val <- if (is.null(input$min_gene_pct)) 5 else input$min_gene_pct
-    current_val <- max(1, min(current_val, slider_max))
-    updateSliderInput(session, "min_gene_pct", min = 1, max = slider_max, step = 1, value = current_val)
-  }, ignoreInit = FALSE)
+  # Update slider max based on maximum gene frequency in filtered dataset (removed: min_gene_pct fixed at 1%)
+  # observeEvent for slider removed; min gene frequency is 1% everywhere
 
   # When switching main tab, clear the *other* tab's filtered-data cache so only one full subset is in memory (reduces OOM)
   observeEvent(input$main_nav, {
@@ -1233,7 +1271,7 @@ server <- function(input, output, session) {
   # Get genes filtered by frequency (for display in dropdowns/plots only, not for sample filtering)
   filtered_genes <- reactive({
     req(df <- filtered_data())
-    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    min_pct <- 1
     if (min_pct > 0) {
       n_samples <- length(unique(df$Sample))
       if (n_samples > 0) {
@@ -1298,10 +1336,105 @@ server <- function(input, output, session) {
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.text = element_text(size = 13), legend.title = element_text(size = 14), axis.text.x = element_text(angle = 45, hjust = 1))
   })
 
+  # ---- Overview: Survival by Dataset (KM colored by dataset) ----
+  output$overview_surv_dataset_plot <- renderPlot({
+    req(df <- filtered_data())
+    surv_df <- df[!is.na(df$Time_to_OS) & !is.na(df$Censor) & !is.na(df$Cohort), , drop = FALSE]
+    surv_df <- surv_df[!duplicated(surv_df$Sample), , drop = FALSE]
+    surv_df$Time_to_OS <- as.numeric(surv_df$Time_to_OS) / 365
+    if (nrow(surv_df) < 5 || length(unique(surv_df$Cohort)) < 1) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient survival data") + theme_void())
+    surv_df$Cohort <- factor(as.character(surv_df$Cohort))  # drop unused levels
+    n_cohorts <- length(unique(surv_df$Cohort))
+    fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Cohort, data = surv_df)
+    if (has_survminer) {
+      cohort_pal <- if (is_meta4()) META4_COHORT_COL else PAL_COHORT
+      present <- levels(surv_df$Cohort)
+      legend_labs <- present
+      pal_vec <- unname(cohort_pal[present])
+      pal_vec[is.na(pal_vec)] <- "gray50"
+      if (n_cohorts == 1) {
+        p <- survminer::ggsurvplot(fit, data = surv_df, risk.table = TRUE, pval = FALSE,
+          title = "Overall Survival by Dataset", xlab = "Years",
+          palette = pal_vec, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05), risk.table.height = 0.3)
+      } else {
+        p <- survminer::ggsurvplot(fit, data = surv_df, risk.table = TRUE, pval = TRUE,
+          title = "Overall Survival by Dataset", xlab = "Years",
+          palette = pal_vec, legend = "right", legend.labs = legend_labs, pval.coord = c(0, 0.05),
+          risk.table.height = 0.3)
+      }
+      print(p)
+    } else {
+      plot(fit, col = seq_along(fit$strata), xlab = "Years", ylab = "Survival", main = "Overall Survival by Dataset")
+    }
+  })
+
+  # ---- Overview: Age Distribution by Dataset ----
+  output$overview_age_dataset_plot <- renderPlot({
+    req(df <- filtered_data())
+    if (!"Age" %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No age data") + theme_void())
+    udf <- df[!duplicated(df$Sample), , drop = FALSE]
+    udf <- udf[!is.na(udf$Age) & !is.na(udf$Cohort), , drop = FALSE]
+    if (nrow(udf) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No age data") + theme_void())
+    cohort_pal <- if (is_meta4()) META4_COHORT_COL else PAL_COHORT
+    present <- unique(udf$Cohort)
+    cohort_pal <- cohort_pal[names(cohort_pal) %in% present]
+    ggplot(udf, aes(x = Cohort, y = Age, fill = Cohort)) +
+      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      scale_fill_manual(values = cohort_pal, na.value = "gray70") +
+      labs(x = NULL, y = "Age (years)") +
+      theme_minimal(base_size = 16) +
+      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
+            legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+
+  # ---- Overview: ELN Risk by Dataset ----
+  output$overview_eln_dataset_plot <- renderPlot({
+    req(df <- filtered_data())
+    if (!"Risk" %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No ELN risk data") + theme_void())
+    udf <- df[!duplicated(df$Sample), , drop = FALSE]
+    udf <- udf[!is.na(udf$Risk) & !is.na(udf$Cohort), , drop = FALSE]
+    udf <- udf[udf$Risk != "Unknown", , drop = FALSE]
+    if (nrow(udf) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No ELN risk data") + theme_void())
+    udf$Risk <- factor(udf$Risk, levels = c("Favorable", "Intermediate", "Adverse"))
+    tbl <- as.data.frame(table(Cohort = udf$Cohort, Risk = udf$Risk), stringsAsFactors = FALSE)
+    cohort_totals <- aggregate(Freq ~ Cohort, data = tbl, sum)
+    tbl <- merge(tbl, cohort_totals, by = "Cohort", suffixes = c("", "_total"))
+    tbl$Pct <- ifelse(tbl$Freq_total > 0, tbl$Freq / tbl$Freq_total * 100, 0)
+    tbl$Risk <- factor(tbl$Risk, levels = c("Favorable", "Intermediate", "Adverse"))
+    ggplot(tbl, aes(x = Cohort, y = Pct, fill = Risk)) +
+      geom_bar(stat = "identity", position = "stack") +
+      scale_fill_manual(values = PAL_RISK, na.value = "gray70") +
+      labs(x = NULL, y = "Percentage of patients (%)", fill = "ELN Risk") +
+      theme_minimal(base_size = 16) +
+      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
+            legend.text = element_text(size = 13), legend.title = element_text(size = 14),
+            axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+
+  # ---- Overview: Recurrently Mutated Genes (>1% of samples) ----
+  output$overview_gene_freq_plot <- renderPlot({
+    req(df <- filtered_data())
+    n_samples <- length(unique(df$Sample))
+    if (n_samples == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void())
+    gene_sample <- df[!duplicated(paste(df$Sample, df$Gene_for_analysis)), , drop = FALSE]
+    gene_counts <- as.data.frame(table(Gene = gene_sample$Gene_for_analysis), stringsAsFactors = FALSE)
+    gene_counts$Pct <- gene_counts$Freq / n_samples * 100
+    gene_counts <- gene_counts[gene_counts$Pct >= 1, , drop = FALSE]
+    if (nrow(gene_counts) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes mutated in >1% of samples") + theme_void())
+    gene_counts <- gene_counts[order(gene_counts$Pct, decreasing = TRUE), , drop = FALSE]
+    gene_counts$Gene <- factor(gene_counts$Gene, levels = rev(gene_counts$Gene))
+    ggplot(gene_counts, aes(x = Pct, y = Gene)) +
+      geom_col(fill = "#4292c6", width = 0.7) +
+      geom_text(aes(label = paste0(round(Pct, 1), "%")), hjust = -0.1, size = 3.5) +
+      scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
+      labs(x = "% of samples mutated", y = NULL) +
+      theme_minimal(base_size = 14) +
+      theme(axis.text.y = element_text(size = 9), axis.text.x = element_text(size = 12), axis.title = element_text(size = 13))
+  })
+
   oncoprint_data <- reactive({
     req(input$main_nav %in% c("analyses", "meta_aml4"))
     req(df <- filtered_data())
-    input$min_gene_pct  # Explicitly depend on gene frequency filter to trigger updates
     final_data_matrix_3 <- df
     if (!is_meta4()) {
       for (i in seq_len(nrow(final_data_matrix_3))) {
@@ -1329,7 +1462,7 @@ server <- function(input, output, session) {
     gene_tbl <- table(as.character(final_data_matrix_3$Gene))
     if (nrow(final_data_matrix_3) == 0) return(NULL)
     # Apply gene frequency filter only to determine which genes to show (all samples still included)
-    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    min_pct <- 1
     if (min_pct > 0) {
       n_samples <- length(unique(final_data_matrix_3$Sample))
       if (n_samples > 0) {
@@ -1542,14 +1675,19 @@ server <- function(input, output, session) {
     }
   })
 
+  # Reactive helpers for VAF/CCF metric toggle
+  vaf_col <- reactive({ if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "CCF" else "VAF" })
+  vaf_label <- reactive({ if (!is.null(input$vaf_metric) && input$vaf_metric == "CCF") "Cancer Cell Fraction (%)" else "Variant Allele Frequency (%)" })
+
   output$vaf_gene_plot <- renderPlot({
     req(df <- filtered_data())
-    input$min_gene_pct  # Re-run when min gene frequency filter changes
-    df <- df[!is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
+    vcol <- vaf_col()
+    vlabel <- vaf_label()
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    df <- df[!is.na(df[[vcol]]) & df[[vcol]] > 0, , drop = FALSE]
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     gene_tbl <- table(as.character(df$Gene_for_analysis))
-    # Restrict to genes that pass Min. gene frequency (% of samples) filter
-    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    min_pct <- 1
     if (min_pct > 0) {
       n_samples <- length(unique(df$Sample))
       if (n_samples > 0) {
@@ -1561,21 +1699,19 @@ server <- function(input, output, session) {
     if (length(gene_tbl) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes pass the Min. gene frequency filter") + theme_void())
     plot_genes <- names(sort(gene_tbl, decreasing = TRUE))
     df <- df[as.character(df$Gene_for_analysis) %in% plot_genes, , drop = FALSE]
-    # Gene order by median VAF (low to high = bottom to top) so both plots align
-    med <- aggregate(VAF ~ Gene_for_analysis, data = df, FUN = median)
-    gene_order <- as.character(med$Gene_for_analysis[order(med$VAF)])
+    df$.metric <- df[[vcol]]
+    med <- aggregate(.metric ~ Gene_for_analysis, data = df, FUN = median)
+    gene_order <- as.character(med$Gene_for_analysis[order(med$.metric)])
     df$Gene_for_analysis <- factor(as.character(df$Gene_for_analysis), levels = gene_order)
     n_cat <- if ("mutation_category" %in% colnames(df)) length(unique(df$mutation_category[!is.na(df$mutation_category) & df$mutation_category != ""])) else 0L
     fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
-    # Shared y scale so patchwork aligns gene rows; use scale_y_discrete(limits = gene_order, drop = FALSE)
     scale_y_shared <- scale_y_discrete(limits = gene_order, drop = FALSE)
-    # Left: VAF by gene (boxplot); legend on top when combined with patchwork
-    p_vaf <- ggplot(df, aes(x = VAF, y = Gene_for_analysis, fill = .data[[fill_var]])) +
+    p_vaf <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_shared +
       (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
-      labs(x = "Variant Allele Frequency (%)", y = NULL) +
+      labs(x = vlabel, y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.text = element_text(size = 13), legend.title = element_text(size = 14))
     # Right: N mutations per gene – horizontal bars, same y scale; colored by mutation_category when used
@@ -1630,21 +1766,24 @@ server <- function(input, output, session) {
 
   output$vaf_cohort_plot <- renderPlot({
     req(df <- filtered_data())
-    df <- df[!is.na(df$VAF) & df$VAF > 0 & !is.na(df$Cohort), , drop = FALSE]
+    vcol <- vaf_col(); vlabel <- vaf_label()
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    df <- df[!is.na(df[[vcol]]) & df[[vcol]] > 0 & !is.na(df$Cohort), , drop = FALSE]
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
+    df$.metric <- df[[vcol]]
     cohort_pal <- if (is_meta4()) META4_COHORT_COL else PAL_COHORT
     present_cohorts <- unique(df$Cohort[!is.na(df$Cohort)])
     cohort_pal <- cohort_pal[names(cohort_pal) %in% present_cohorts]
-    med <- aggregate(VAF ~ Cohort, data = df, FUN = median)
-    cohort_order <- as.character(med$Cohort[order(med$VAF)])
+    med <- aggregate(.metric ~ Cohort, data = df, FUN = median)
+    cohort_order <- as.character(med$Cohort[order(med$.metric)])
     df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
     scale_y_coh <- scale_y_discrete(limits = cohort_order, drop = FALSE)
-    p_box <- ggplot(df, aes(x = VAF, y = Cohort, fill = Cohort)) +
+    p_box <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_coh +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
-      labs(x = "Variant Allele Frequency (%)", y = NULL) +
+      labs(x = vlabel, y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.position = "none")
     coh_counts <- as.data.frame(table(Cohort = df$Cohort), stringsAsFactors = FALSE)
@@ -1668,18 +1807,21 @@ server <- function(input, output, session) {
 
   output$vaf_category_plot <- renderPlot({
     req(df <- filtered_data())
-    df <- df[!is.na(df$VAF) & df$VAF > 0 & !is.na(df$mutation_category) & df$mutation_category != "", , drop = FALSE]
+    vcol <- vaf_col(); vlabel <- vaf_label()
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    df <- df[!is.na(df[[vcol]]) & df[[vcol]] > 0 & !is.na(df$mutation_category) & df$mutation_category != "", , drop = FALSE]
     if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
-    med <- aggregate(VAF ~ mutation_category, data = df, FUN = median)
-    cat_order <- as.character(med$mutation_category[order(med$VAF)])
+    df$.metric <- df[[vcol]]
+    med <- aggregate(.metric ~ mutation_category, data = df, FUN = median)
+    cat_order <- as.character(med$mutation_category[order(med$.metric)])
     df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
     scale_y_cat <- scale_y_discrete(limits = cat_order, drop = FALSE)
-    p_box <- ggplot(df, aes(x = VAF, y = mutation_category, fill = mutation_category)) +
+    p_box <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_cat +
       scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70") +
-      labs(x = "Variant Allele Frequency (%)", y = NULL) +
+      labs(x = vlabel, y = NULL) +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15), legend.position = "none")
     cat_counts <- as.data.frame(table(mutation_category = df$mutation_category), stringsAsFactors = FALSE)
@@ -1701,11 +1843,11 @@ server <- function(input, output, session) {
     }
   })
 
-  # Summary of HR (and 95% CI) per gene from MaxStat-derived High vs Low VAF Cox model
   vaf_survival_hr_summary <- reactive({
     req(df <- filtered_data())
-    input$min_gene_pct
-    if (!"VAF" %in% colnames(df)) return(NULL)
+    vcol <- vaf_col()
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    if (!vcol %in% colnames(df)) return(NULL)
     surv_df <- survival_data()
     if (is.null(surv_df) || nrow(surv_df) == 0) return(NULL)
     surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
@@ -1714,15 +1856,16 @@ server <- function(input, output, session) {
     if (!has_maxstat) return(NULL)
     res_list <- list()
     for (gene in genes) {
-      sub <- df[as.character(df$Gene_for_analysis) == gene & !is.na(df$VAF) & df$VAF > 0, c("Sample", "VAF"), drop = FALSE]
+      sub <- df[as.character(df$Gene_for_analysis) == gene & !is.na(df[[vcol]]) & df[[vcol]] > 0, c("Sample", vcol), drop = FALSE]
       if (nrow(sub) == 0) next
-      vaf_agg <- aggregate(VAF ~ Sample, data = sub, FUN = max)
+      colnames(sub)[colnames(sub) == vcol] <- ".metric"
+      vaf_agg <- aggregate(.metric ~ Sample, data = sub, FUN = max)
       merge_df <- merge(vaf_agg, surv_uniq, by = "Sample", all = FALSE)
       if (nrow(merge_df) < 20) next
-      mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ VAF, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
+      mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ .metric, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
       if (is.null(mst)) next
       cutpoint <- mst$estimate
-      merge_df$Group <- factor(ifelse(merge_df$VAF > cutpoint, "High", "Low"), levels = c("Low", "High"))
+      merge_df$Group <- factor(ifelse(merge_df$.metric > cutpoint, "High", "Low"), levels = c("Low", "High"))
       if (length(unique(merge_df$Group)) < 2) next
       cx <- tryCatch(survival::coxph(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = merge_df), error = function(e) NULL)
       if (is.null(cx)) next
@@ -1744,13 +1887,14 @@ server <- function(input, output, session) {
 
   output$vaf_survival_plot <- renderPlot({
     hr_summary <- vaf_survival_hr_summary()
+    vcol <- vaf_col(); vlabel <- vaf_label()
+    metric_short <- if (vcol == "CCF") "CCF" else "VAF"
     if (is.null(hr_summary) || nrow(hr_summary) == 0) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes with ≥20 mutated samples (VAF + survival). Install maxstat for MaxStat threshold.") + theme_void())
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste0("No genes with \u226520 mutated samples (", metric_short, " + survival). Install maxstat for MaxStat threshold.")) + theme_void())
     }
     if (!has_maxstat) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install the maxstat package for optimal VAF threshold (maximally selected rank statistics).") + theme_void())
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste0("Install the maxstat package for optimal ", metric_short, " threshold.")) + theme_void())
     }
-    # Forest plot: gene on y, HR on x with 95% CI; reference line at 1; ordered by HR (lowest at top), colored like single-gene Hazard Ratios (purple/green for significant)
     hr_summary$Gene <- factor(hr_summary$Gene, levels = hr_summary$Gene)
     hr_summary$ColorGroup <- ifelse(hr_summary$p_value >= 0.05, "Not significant",
       ifelse(hr_summary$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
@@ -1759,9 +1903,9 @@ server <- function(input, output, session) {
       geom_errorbarh(height = 0.2, linewidth = 0.6) +
       geom_point(aes(size = n_high), alpha = 0.8) +
       scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
-      scale_size_continuous(name = "# of patients\nabove VAF\nthreshold", range = c(2, 7)) +
-      scale_x_continuous(trans = "log10", name = "Hazard ratio (High vs Low VAF, 95% CI)") +
-      labs(y = NULL, title = "VAF\u2013Survival: HR per gene (MaxStat threshold)") +
+      scale_size_continuous(name = paste0("# above\n", metric_short, "\nthreshold"), range = c(2, 7)) +
+      scale_x_continuous(trans = "log10", name = paste0("Hazard ratio (High vs Low ", metric_short, ", 95% CI)")) +
+      labs(y = NULL, title = paste0(metric_short, "\u2013Survival: HR per gene (MaxStat threshold)")) +
       theme_minimal(base_size = 14) +
       theme(axis.text.y = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 14, face = "bold"))
   })
@@ -1838,14 +1982,15 @@ server <- function(input, output, session) {
   output$hr_vs_maxstat_plot <- renderPlot({
     df <- hr_vs_maxstat_data()
     if (is.null(df) || nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data") + theme_void())
+    metric_short <- if (vaf_col() == "CCF") "CCF" else "VAF"
     sig_df <- df[df$ColorGroup != "Not significant", , drop = FALSE]
     p <- ggplot(df, aes(x = MaxStat_HR, y = Mutation_HR, size = VAF_threshold, color = ColorGroup)) +
       geom_point(alpha = 0.8) +
       geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
       geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
       scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
-      scale_size_continuous(name = "VAF threshold", range = c(2, 8)) +
-      labs(x = "MaxStat VAF HR (High vs Low VAF)", y = "Mutation HR (Mutated vs WT)") +
+      scale_size_continuous(name = paste(metric_short, "threshold"), range = c(2, 8)) +
+      labs(x = paste0("MaxStat ", metric_short, " HR (High vs Low ", metric_short, ")"), y = "Mutation HR (Mutated vs WT)") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
             legend.text = element_text(size = 13), legend.title = element_text(size = 14))
@@ -1867,14 +2012,15 @@ server <- function(input, output, session) {
         ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 10, height = 7, dpi = 150)
         return(invisible(NULL))
       }
+      metric_short <- if (vaf_col() == "CCF") "CCF" else "VAF"
       sig_df <- df[df$ColorGroup != "Not significant", , drop = FALSE]
       p <- ggplot(df, aes(x = MaxStat_HR, y = Mutation_HR, size = VAF_threshold, color = ColorGroup)) +
         geom_point(alpha = 0.8) +
         geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
         geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
         scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
-        scale_size_continuous(name = "VAF threshold", range = c(2, 8)) +
-        labs(x = "MaxStat VAF HR (High vs Low VAF)", y = "Mutation HR (Mutated vs WT)") +
+        scale_size_continuous(name = paste(metric_short, "threshold"), range = c(2, 8)) +
+        labs(x = paste0("MaxStat ", metric_short, " HR (High vs Low ", metric_short, ")"), y = "Mutation HR (Mutated vs WT)") +
         theme_minimal(base_size = 16) +
         theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
               legend.text = element_text(size = 13), legend.title = element_text(size = 14))
@@ -1889,12 +2035,299 @@ server <- function(input, output, session) {
     }
   )
 
+  output$download_vaf_gene_plot <- downloadHandler(
+    filename = function() paste0(tolower(vaf_col()), "_by_gene_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- filtered_data(); vcol <- vaf_col(); vlabel <- vaf_label()
+      if (is.null(df)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 10, height = 7, dpi = 150); return(invisible(NULL)) }
+      if (!vcol %in% colnames(df)) vcol <- "VAF"
+      df <- df[!is.na(df[[vcol]]) & df[[vcol]] > 0, , drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 10, height = 7, dpi = 150); return(invisible(NULL)) }
+      gene_tbl <- table(as.character(df$Gene_for_analysis))
+      min_pct <- 1
+      if (min_pct > 0) { n_samples <- length(unique(df$Sample)); if (n_samples > 0) { gene_pct <- (gene_tbl / n_samples) * 100; gene_tbl <- gene_tbl[names(gene_tbl) %in% names(gene_pct)[gene_pct >= min_pct]] } }
+      if (length(gene_tbl) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes") + theme_void(), width = 10, height = 7, dpi = 150); return(invisible(NULL)) }
+      plot_genes <- names(sort(gene_tbl, decreasing = TRUE))
+      df <- df[as.character(df$Gene_for_analysis) %in% plot_genes, , drop = FALSE]
+      df$.metric <- df[[vcol]]
+      med <- aggregate(.metric ~ Gene_for_analysis, data = df, FUN = median)
+      gene_order <- as.character(med$Gene_for_analysis[order(med$.metric)])
+      df$Gene_for_analysis <- factor(as.character(df$Gene_for_analysis), levels = gene_order)
+      n_cat <- if ("mutation_category" %in% colnames(df)) length(unique(df$mutation_category[!is.na(df$mutation_category) & df$mutation_category != ""])) else 0L
+      fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
+      p <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
+        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70") else scale_fill_discrete(guide = "none")) +
+        labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
+        theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), legend.position = "top")
+      ggsave(file, plot = p, width = 10, height = max(5, 0.3 * length(plot_genes) + 2), dpi = 300)
+    }
+  )
+
+  output$download_vaf_survival_plot <- downloadHandler(
+    filename = function() paste0(tolower(vaf_col()), "_survival_hr_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      hr_summary <- vaf_survival_hr_summary()
+      vcol <- vaf_col(); metric_short <- if (vcol == "CCF") "CCF" else "VAF"
+      if (is.null(hr_summary) || nrow(hr_summary) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 6, dpi = 150); return(invisible(NULL)) }
+      hr_summary$Gene <- factor(hr_summary$Gene, levels = hr_summary$Gene)
+      hr_summary$ColorGroup <- ifelse(hr_summary$p_value >= 0.05, "Not significant", ifelse(hr_summary$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
+      p <- ggplot(hr_summary, aes(x = HR, y = Gene, xmin = CI_lower, xmax = CI_upper, color = ColorGroup)) +
+        geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
+        geom_errorbarh(height = 0.2, linewidth = 0.6) +
+        geom_point(aes(size = n_high), alpha = 0.8) +
+        scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL) +
+        scale_size_continuous(name = paste0("# above\n", metric_short, "\nthreshold"), range = c(2, 7)) +
+        scale_x_continuous(trans = "log10", name = paste0("Hazard ratio (High vs Low ", metric_short, ", 95% CI)")) +
+        labs(y = NULL, title = paste0(metric_short, "\u2013Survival: HR per gene (MaxStat threshold)")) +
+        theme_minimal(base_size = 14) +
+        theme(axis.text.y = element_text(size = 12), axis.title = element_text(size = 13), plot.title = element_text(size = 14, face = "bold"))
+      ggsave(file, plot = p, width = 8, height = max(4, 0.3 * nrow(hr_summary) + 2), dpi = 300)
+    }
+  )
+
+  output$download_vaf_category_plot <- downloadHandler(
+    filename = function() paste0(tolower(vaf_col()), "_by_category_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- filtered_data(); vcol <- vaf_col(); vlabel <- vaf_label()
+      if (is.null(df)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 6, dpi = 150); return(invisible(NULL)) }
+      if (!vcol %in% colnames(df)) vcol <- "VAF"
+      df <- df[!is.na(df[[vcol]]) & df[[vcol]] > 0 & !is.na(df$mutation_category) & df$mutation_category != "", , drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 6, dpi = 150); return(invisible(NULL)) }
+      df$.metric <- df[[vcol]]
+      med <- aggregate(.metric ~ mutation_category, data = df, FUN = median)
+      cat_order <- as.character(med$mutation_category[order(med$.metric)])
+      df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
+      p <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
+        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
+        labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
+        theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
+      ggsave(file, plot = p, width = 8, height = max(4, 0.4 * length(cat_order) + 2), dpi = 300)
+    }
+  )
+
+  output$download_vaf_cohort_plot <- downloadHandler(
+    filename = function() paste0(tolower(vaf_col()), "_by_cohort_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- filtered_data(); vcol <- vaf_col(); vlabel <- vaf_label()
+      if (is.null(df)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 6, dpi = 150); return(invisible(NULL)) }
+      if (!vcol %in% colnames(df)) vcol <- "VAF"
+      df <- df[!is.na(df[[vcol]]) & df[[vcol]] > 0 & !is.na(df$Cohort), , drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 8, height = 6, dpi = 150); return(invisible(NULL)) }
+      df$.metric <- df[[vcol]]
+      cohort_pal <- if (is_meta4()) META4_COHORT_COL else PAL_COHORT
+      present_cohorts <- unique(df$Cohort[!is.na(df$Cohort)]); cohort_pal <- cohort_pal[names(cohort_pal) %in% present_cohorts]
+      med <- aggregate(.metric ~ Cohort, data = df, FUN = median)
+      cohort_order <- as.character(med$Cohort[order(med$.metric)])
+      df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
+      p <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
+        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        scale_fill_manual(values = cohort_pal, na.value = "gray70", guide = "none") +
+        labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
+        theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
+      ggsave(file, plot = p, width = 8, height = max(4, 0.5 * length(cohort_order) + 2), dpi = 300)
+    }
+  )
+
+  # --- Clonal Ordering Survival: All Gene Pairs ---
+  clonal_hr_all_pairs <- reactive({
+    req(df <- filtered_data())
+    vcol <- vaf_col()
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    if (!vcol %in% colnames(df)) return(NULL)
+    surv_df <- survival_data()
+    if (is.null(surv_df) || nrow(surv_df) == 0) return(NULL)
+    surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
+    genes <- filtered_genes()
+    if (length(genes) < 2) return(NULL)
+    pairs <- combn(genes, 2, simplify = FALSE)
+    res_list <- list()
+    for (pair in pairs) {
+      g1 <- pair[1]; g2 <- pair[2]
+      sub1 <- df[as.character(df$Gene_for_analysis) == g1 & !is.na(df[[vcol]]) & df[[vcol]] > 0, c("Sample", vcol), drop = FALSE]
+      sub2 <- df[as.character(df$Gene_for_analysis) == g2 & !is.na(df[[vcol]]) & df[[vcol]] > 0, c("Sample", vcol), drop = FALSE]
+      if (nrow(sub1) == 0 || nrow(sub2) == 0) next
+      colnames(sub1)[2] <- "v1"; colnames(sub2)[2] <- "v2"
+      sub1 <- aggregate(v1 ~ Sample, data = sub1, FUN = max)
+      sub2 <- aggregate(v2 ~ Sample, data = sub2, FUN = max)
+      both <- merge(sub1, sub2, by = "Sample")
+      if (nrow(both) < 5) next
+      diff_val <- both$v1 - both$v2
+      both$Order <- ifelse(diff_val > 5, paste(g1, "first"), ifelse(diff_val < -5, paste(g2, "first"), "Ambiguous"))
+      both <- both[both$Order != "Ambiguous", , drop = FALSE]
+      n_g1 <- sum(both$Order == paste(g1, "first"))
+      n_g2 <- sum(both$Order == paste(g2, "first"))
+      if (n_g1 < 10 || n_g2 < 10) next
+      km_df <- merge(both[, c("Sample", "Order"), drop = FALSE], surv_uniq, by = "Sample")
+      if (nrow(km_df) < 20) next
+      km_df$Order <- factor(km_df$Order, levels = c(paste(g2, "first"), paste(g1, "first")))
+      cx <- tryCatch(survival::coxph(Surv(Time_to_OS, as.numeric(Censor)) ~ Order, data = km_df), error = function(e) NULL)
+      if (is.null(cx)) next
+      ci <- tryCatch(exp(confint(cx)), error = function(e) NULL)
+      if (is.null(ci)) next
+      cx_sum <- summary(cx)
+      coef_name <- paste0("Order", paste(g1, "first"))
+      hr <- exp(coef(cx))[coef_name]
+      ci_lo <- ci[coef_name, 1]; ci_hi <- ci[coef_name, 2]
+      pval <- cx_sum$coefficients[coef_name, "Pr(>|z|)"]
+      res_list[[length(res_list) + 1L]] <- data.frame(
+        Pair = paste(g1, "vs", g2), Gene_A = g1, Gene_B = g2,
+        HR = as.numeric(hr), CI_lower = as.numeric(ci_lo), CI_upper = as.numeric(ci_hi),
+        p_value = as.numeric(pval), n_A_first = n_g1, n_B_first = n_g2,
+        n_total = n_g1 + n_g2, stringsAsFactors = FALSE)
+    }
+    if (length(res_list) == 0) return(NULL)
+    out <- do.call(rbind, res_list)
+    out$p_adj <- p.adjust(out$p_value, method = "fdr")
+    out <- out[order(out$HR), , drop = FALSE]
+    out
+  })
+
+  output$clonal_hr_summary_plot <- renderPlot({
+    hr_df <- clonal_hr_all_pairs()
+    vcol <- vaf_col()
+    metric_short <- if (vcol == "CCF") "CCF" else "VAF"
+    if (is.null(hr_df) || nrow(hr_df) == 0) {
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5,
+        label = paste0("No gene pairs with \u226510 non-ambiguous orderings per group (", metric_short, " difference > 5%)"),
+        size = 5) + theme_void())
+    }
+    hr_df$Pair <- factor(hr_df$Pair, levels = hr_df$Pair)
+    hr_df$Significance <- ifelse(hr_df$p_adj < 0.05, "FDR < 0.05",
+      ifelse(hr_df$p_value < 0.05, "p < 0.05", "Not significant"))
+    sig_colors <- c("FDR < 0.05" = "#762a83", "p < 0.05" = "#e7298a", "Not significant" = "#9E9E9E")
+    hr_df$label <- paste0("HR=", round(hr_df$HR, 2), " (", round(hr_df$CI_lower, 2), "\u2013", round(hr_df$CI_upper, 2), ")")
+    ggplot(hr_df, aes(x = HR, y = Pair, xmin = CI_lower, xmax = CI_upper, color = Significance)) +
+      geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
+      geom_errorbarh(height = 0.25, linewidth = 0.6) +
+      geom_point(aes(size = n_total), alpha = 0.8) +
+      scale_color_manual(values = sig_colors, name = NULL) +
+      scale_size_continuous(name = "Non-ambiguous\ncases", range = c(2, 8)) +
+      scale_x_continuous(trans = "log10", name = paste0("Hazard Ratio (Gene A first vs Gene B first, 95% CI)")) +
+      labs(y = NULL, title = paste0("Clonal ordering survival: all gene pairs (", metric_short, ")"),
+        subtitle = paste0("HR > 1: worse survival when Gene A (left of 'vs') has higher ", metric_short)) +
+      theme_minimal(base_size = 14) +
+      theme(axis.text.y = element_text(size = 11), axis.title = element_text(size = 13),
+        plot.title = element_text(size = 14, face = "bold"), plot.subtitle = element_text(size = 11, color = "gray40"))
+  })
+
+  output$download_clonal_hr_summary_plot <- downloadHandler(
+    filename = function() paste0("clonal_hr_all_pairs_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      hr_df <- clonal_hr_all_pairs()
+      if (is.null(hr_df) || nrow(hr_df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 10, height = 6, dpi = 150); return(invisible(NULL)) }
+      vcol <- vaf_col(); metric_short <- if (vcol == "CCF") "CCF" else "VAF"
+      hr_df$Pair <- factor(hr_df$Pair, levels = hr_df$Pair)
+      hr_df$Significance <- ifelse(hr_df$p_adj < 0.05, "FDR < 0.05", ifelse(hr_df$p_value < 0.05, "p < 0.05", "Not significant"))
+      sig_colors <- c("FDR < 0.05" = "#762a83", "p < 0.05" = "#e7298a", "Not significant" = "#9E9E9E")
+      p <- ggplot(hr_df, aes(x = HR, y = Pair, xmin = CI_lower, xmax = CI_upper, color = Significance)) +
+        geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
+        geom_errorbarh(height = 0.25, linewidth = 0.6) +
+        geom_point(aes(size = n_total), alpha = 0.8) +
+        scale_color_manual(values = sig_colors, name = NULL) +
+        scale_size_continuous(name = "Non-ambiguous\ncases", range = c(2, 8)) +
+        scale_x_continuous(trans = "log10", name = "Hazard Ratio (Gene A first vs Gene B first, 95% CI)") +
+        labs(y = NULL, title = paste0("Clonal ordering survival: all gene pairs (", metric_short, ")"),
+          subtitle = paste0("HR > 1: worse survival when Gene A (left of 'vs') has higher ", metric_short)) +
+        theme_minimal(base_size = 14) +
+        theme(axis.text.y = element_text(size = 11), axis.title = element_text(size = 13),
+          plot.title = element_text(size = 14, face = "bold"), plot.subtitle = element_text(size = 11, color = "gray40"))
+      ggsave(file, plot = p, width = 10, height = max(5, 0.35 * nrow(hr_df) + 2), dpi = 300)
+    }
+  )
+
+  # --- VAF vs CCF scatterplot ---
+  output$vaf_vs_ccf_plot <- renderPlot({
+    req(df <- filtered_data())
+    if (!"VAF" %in% colnames(df) || !"CCF" %in% colnames(df)) {
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "CCF column not available", size = 5) + theme_void())
+    }
+    df <- df[!is.na(df$VAF) & df$VAF > 0 & !is.na(df$CCF), , drop = FALSE]
+    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data with both VAF and CCF") + theme_void())
+    cn_col <- if ("CN_at_locus" %in% colnames(df)) "CN_at_locus" else NULL
+    if (!is.null(cn_col)) {
+      df$CN_label <- factor(ifelse(is.na(df[[cn_col]]), "Unknown",
+        ifelse(df[[cn_col]] == 1, "CN = 1 (loss/hemizygous)",
+        ifelse(df[[cn_col]] == 2, "CN = 2 (diploid)",
+        ifelse(df[[cn_col]] == 3, "CN = 3 (gain)", paste0("CN = ", df[[cn_col]]))))),
+        levels = c("CN = 1 (loss/hemizygous)", "CN = 2 (diploid)", "CN = 3 (gain)", "Unknown"))
+      cn_pal <- c("CN = 1 (loss/hemizygous)" = "#d73027", "CN = 2 (diploid)" = "#4575b4", "CN = 3 (gain)" = "#1a9850", "Unknown" = "#999999")
+      p <- ggplot(df, aes(x = VAF, y = CCF, color = CN_label)) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60", linewidth = 0.5) +
+        geom_point(alpha = 0.4, size = 1.8) +
+        scale_color_manual(values = cn_pal, name = "Copy number", drop = FALSE) +
+        scale_x_continuous(limits = c(0, 100)) + scale_y_continuous(limits = c(0, 100)) +
+        labs(x = "VAF (%)", y = "CCF (%)", title = "VAF vs CCF") +
+        theme_minimal(base_size = 14) +
+        theme(legend.position = "bottom", legend.text = element_text(size = 11),
+          axis.text = element_text(size = 12), axis.title = element_text(size = 13))
+    } else {
+      p <- ggplot(df, aes(x = VAF, y = CCF)) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60", linewidth = 0.5) +
+        geom_point(alpha = 0.4, size = 1.8, color = "#4575b4") +
+        scale_x_continuous(limits = c(0, 100)) + scale_y_continuous(limits = c(0, 100)) +
+        labs(x = "VAF (%)", y = "CCF (%)", title = "VAF vs CCF") +
+        theme_minimal(base_size = 14) +
+        theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
+    }
+    n_total <- nrow(df)
+    n_above <- sum(df$CCF > df$VAF, na.rm = TRUE)
+    n_on <- sum(abs(df$CCF - df$VAF) < 0.5, na.rm = TRUE)
+    n_below <- sum(df$CCF < df$VAF, na.rm = TRUE)
+    cor_val <- round(cor(df$VAF, df$CCF, use = "complete.obs"), 3)
+    p + annotate("text", x = 5, y = 95, hjust = 0, vjust = 1, size = 3.8, color = "gray30",
+      label = paste0("n = ", n_total, "  |  r = ", cor_val,
+        "\nAbove diagonal (CN>2): ", n_above,
+        "\nBelow diagonal (CN<2): ", n_below))
+  })
+
+  output$download_vaf_vs_ccf_plot <- downloadHandler(
+    filename = function() paste0("vaf_vs_ccf_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    content = function(file) {
+      df <- filtered_data()
+      if (is.null(df) || !"VAF" %in% colnames(df) || !"CCF" %in% colnames(df)) {
+        ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 7, height = 7, dpi = 150)
+        return(invisible(NULL))
+      }
+      df <- df[!is.na(df$VAF) & df$VAF > 0 & !is.na(df$CCF), , drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void(), width = 7, height = 7, dpi = 150); return(invisible(NULL)) }
+      cn_col <- if ("CN_at_locus" %in% colnames(df)) "CN_at_locus" else NULL
+      if (!is.null(cn_col)) {
+        df$CN_label <- factor(ifelse(is.na(df[[cn_col]]), "Unknown",
+          ifelse(df[[cn_col]] == 1, "CN = 1 (loss/hemizygous)",
+          ifelse(df[[cn_col]] == 2, "CN = 2 (diploid)",
+          ifelse(df[[cn_col]] == 3, "CN = 3 (gain)", paste0("CN = ", df[[cn_col]]))))),
+          levels = c("CN = 1 (loss/hemizygous)", "CN = 2 (diploid)", "CN = 3 (gain)", "Unknown"))
+        cn_pal <- c("CN = 1 (loss/hemizygous)" = "#d73027", "CN = 2 (diploid)" = "#4575b4", "CN = 3 (gain)" = "#1a9850", "Unknown" = "#999999")
+        p <- ggplot(df, aes(x = VAF, y = CCF, color = CN_label)) +
+          geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60") +
+          geom_point(alpha = 0.4, size = 1.8) +
+          scale_color_manual(values = cn_pal, name = "Copy number", drop = FALSE) +
+          scale_x_continuous(limits = c(0, 100)) + scale_y_continuous(limits = c(0, 100)) +
+          labs(x = "VAF (%)", y = "CCF (%)", title = "VAF vs CCF") +
+          theme_minimal(base_size = 14) + theme(legend.position = "bottom")
+      } else {
+        p <- ggplot(df, aes(x = VAF, y = CCF)) +
+          geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60") +
+          geom_point(alpha = 0.4, size = 1.8, color = "#4575b4") +
+          scale_x_continuous(limits = c(0, 100)) + scale_y_continuous(limits = c(0, 100)) +
+          labs(x = "VAF (%)", y = "CCF (%)", title = "VAF vs CCF") +
+          theme_minimal(base_size = 14)
+      }
+      cor_val <- round(cor(df$VAF, df$CCF, use = "complete.obs"), 3)
+      p <- p + annotate("text", x = 5, y = 95, hjust = 0, vjust = 1, size = 3.8, color = "gray30",
+        label = paste0("n = ", nrow(df), "  |  r = ", cor_val))
+      ggsave(file, plot = p, width = 7, height = 7, dpi = 300)
+    }
+  )
+
   forest_data <- reactive({
     surv_df <- survival_data()
     surv_uniq <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
     # Apply gene frequency filter to determine which genes to show in forest plot (all samples still used for analysis)
     gene_tbl <- table(as.character(surv_df$Gene_for_analysis))
-    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    min_pct <- 1
     if (min_pct > 0) {
       n_samples <- length(unique(surv_df$Sample))
       if (n_samples > 0) {
@@ -2267,7 +2700,6 @@ server <- function(input, output, session) {
   output$clinical_plot <- renderPlot({
     var <- input$clin_var
     if (is.null(var) || var == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a variable"))
-    input$min_gene_pct  # Explicitly depend on gene frequency filter to trigger updates
     df <- filtered_data()
     if (is.null(df) || !var %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Variable not in data"))
     df_one <- df[!duplicated(df$Sample), c("Sample", "Gene_for_analysis", var), drop = FALSE]
@@ -2284,7 +2716,7 @@ server <- function(input, output, session) {
     if (nrow(df_one) < 5) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data"))
     # Apply gene frequency filter to determine which genes to show
     gene_tbl <- table(df_one$Gene_for_analysis)
-    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    min_pct <- 1
     if (min_pct > 0) {
       n_samples <- length(unique(df_one$Sample))
       if (n_samples > 0) {
@@ -2323,7 +2755,7 @@ server <- function(input, output, session) {
       else if (var == "Platelet") df_one <- df_one[df_one[[var]] <= 300, , drop = FALSE]
       if (nrow(df_one) < 5) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data") + theme_void(), width = 8, height = 5, dpi = 150); return(invisible(NULL)) }
       gene_tbl <- table(df_one$Gene_for_analysis)
-      min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+      min_pct <- 1
       if (min_pct > 0) {
         n_samples <- length(unique(df_one$Sample))
         if (n_samples > 0) {
@@ -2390,7 +2822,6 @@ server <- function(input, output, session) {
   })
 
   output$cooccurrence_plot <- renderPlot({
-    input$min_gene_pct  # Re-render when gene frequency filter changes (display only)
     cooc <- cooccurrence_data()
     if (is.null(cooc$matrix) || nrow(cooc$matrix) < 2) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Insufficient data"))
     # Filter to genes passing min. gene frequency for display only (underlying ORs unchanged)
@@ -2423,7 +2854,6 @@ server <- function(input, output, session) {
   })
 
   output$cooccurrence_table <- renderDT({
-    input$min_gene_pct  # Re-render when gene frequency filter changes (display only)
     cooc <- cooccurrence_data()
     if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     keep_genes <- filtered_genes()
@@ -2711,7 +3141,6 @@ server <- function(input, output, session) {
 
   output$clinical_plot <- renderPlot({
     var <- input$clin_var
-    input$min_gene_pct  # Explicitly depend on gene frequency filter to trigger updates
     req(df <- filtered_data())
     cols <- c("Sample", "Gene_for_analysis", var)
     df <- df[, cols[cols %in% colnames(df)], drop = FALSE]
@@ -2729,7 +3158,7 @@ server <- function(input, output, session) {
     df <- df[df$Sample %in% sample_vals$Sample, , drop = FALSE]
     gene_tbl <- table(as.character(df$Gene_for_analysis))
     # Apply gene frequency filter to determine which genes to show
-    min_pct <- if (is.null(input$min_gene_pct)) 0 else input$min_gene_pct
+    min_pct <- 1
     if (min_pct > 0) {
       n_samples <- length(unique(df$Sample))
       if (n_samples > 0) {
@@ -2787,12 +3216,15 @@ server <- function(input, output, session) {
     g2 <- input$vaf_gene2
     if (is.null(g1) || g1 == "" || is.null(g2) || g2 == "" || g1 == g2) return(NULL)
     req(df <- filtered_data())
-    df <- df[as.character(df$Gene_for_analysis) %in% c(g1, g2), c("Sample", "Gene_for_analysis", "VAF"), drop = FALSE]
+    vcol <- vaf_col()
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    df <- df[as.character(df$Gene_for_analysis) %in% c(g1, g2), c("Sample", "Gene_for_analysis", vcol), drop = FALSE]
     df$Gene <- df$Gene_for_analysis
-    df <- df[, c("Sample", "Gene", "VAF"), drop = FALSE]
-    df <- df[!is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
+    df$.metric <- df[[vcol]]
+    df <- df[, c("Sample", "Gene", ".metric"), drop = FALSE]
+    df <- df[!is.na(df$.metric) & df$.metric > 0, , drop = FALSE]
     wide <- reshape(df, idvar = "Sample", timevar = "Gene", direction = "wide")
-    colnames(wide) <- gsub("^VAF\\.", "", colnames(wide))
+    colnames(wide) <- gsub("^\\.metric\\.", "", colnames(wide))
     if (!g1 %in% colnames(wide) || !g2 %in% colnames(wide)) return(NULL)
     wide <- wide[complete.cases(wide[, c(g1, g2), drop = FALSE]), , drop = FALSE]
     if (nrow(wide) < 5) return(NULL)
@@ -2804,6 +3236,8 @@ server <- function(input, output, session) {
   output$vaf_scatter_plot <- renderPlot({
     g1 <- input$vaf_gene1
     g2 <- input$vaf_gene2
+    vcol <- vaf_col(); vlabel <- vaf_label()
+    metric_short <- if (vcol == "CCF") "CCF" else "VAF"
     if (is.null(g1) || g1 == "" || is.null(g2) || g2 == "" || g1 == g2) {
       return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select two different genes", size = 6) +
         theme_void() + theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA)))
@@ -2819,7 +3253,7 @@ server <- function(input, output, session) {
       scale_color_manual(values = color_vals) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_continuous(limits = c(0, 100)) +
-      labs(x = paste(g2, "VAF (%)"), y = paste(g1, "VAF (%)"), color = "Clonal order") +
+      labs(x = paste(g2, metric_short, "(%)"), y = paste(g1, metric_short, "(%)"), color = "Clonal order") +
       theme_minimal(base_size = 14) +
       theme(panel.background = element_rect(fill = "white", color = NA), plot.background = element_rect(fill = "white", color = NA),
             axis.text = element_text(size = 13), axis.title = element_text(size = 14), legend.text = element_text(size = 12))
@@ -3543,7 +3977,7 @@ server <- function(input, output, session) {
         selected = if (is.null(selected_gene_summary_sub_tab()) || !selected_gene_summary_sub_tab() %in% c("clinical", "comut", "vaf", "drug")) "clinical" else selected_gene_summary_sub_tab(),
         tabPanel("Clinical", value = "clinical"),
         tabPanel("Co-mutation", value = "comut"),
-        tabPanel("VAF", value = "vaf"),
+        tabPanel("Clonality", value = "vaf"),
         tabPanel("Drug Sensitivity", value = "drug")
       ),
       uiOutput("gene_summary_sub_content")
@@ -3601,12 +4035,12 @@ server <- function(input, output, session) {
       ),
       vaf = fluidRow(
         column(6, wellPanel(
-          fluidRow(column(8, h4("VAF distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_plot", "Download plot")))),
-          p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Variant allele frequency (not copy number corrected)"),
+          fluidRow(column(8, h4("VAF / CCF distribution")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_plot", "Download plot")))),
+          p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Toggle VAF/CCF with the sidebar control"),
           plotOutput("gene_summary_vaf_plot", height = 350))),
         column(6, wellPanel(
-          fluidRow(column(8, h4("VAF and survival (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_survival_plot", "Download plot")))),
-          p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #8B0000; font-weight: bold;", "Red"), " = high VAF; ", span(style = "color: #4D4D4D; font-weight: bold;", "Gray"), " = low VAF (MaxStat optimal cutpoint)."),
+          fluidRow(column(8, h4("VAF / CCF and survival (MaxStat)")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_gene_summary_vaf_survival_plot", "Download plot")))),
+          p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "High vs Low split at MaxStat optimal cutpoint; toggle VAF/CCF with sidebar control."),
           plotOutput("gene_summary_vaf_survival_plot", height = 350)))
       ),
       drug = (tagList(
@@ -4012,34 +4446,43 @@ server <- function(input, output, session) {
   output$gene_summary_vaf_plot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
+    vcol <- vaf_col(); vlabel <- vaf_label()
+    metric_short <- if (vcol == "CCF") "CCF" else "VAF"
     df <- filtered_data()
-    df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
-    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No VAF data"))
-    ggplot(df, aes(x = VAF)) +
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df[[vcol]]) & df[[vcol]] > 0, , drop = FALSE]
+    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No", metric_short, "data")))
+    df$.metric <- df[[vcol]]
+    ggplot(df, aes(x = .metric)) +
       geom_histogram(bins = 25, fill = "#374e55", alpha = 0.8) +
-      labs(x = "VAF (%)", y = "Count", title = paste("VAF distribution for", g)) +
+      labs(x = paste0(metric_short, " (%)"), y = "Count", title = paste(metric_short, "distribution for", g)) +
       theme_minimal(base_size = 14)
   })
 
   output$gene_summary_vaf_survival_plot <- renderPlot({
     g <- input$gene_summary
     if (is.null(g) || g == "") return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene"))
+    vcol <- vaf_col()
+    metric_short <- if (vcol == "CCF") "CCF" else "VAF"
     df <- filtered_data()
-    df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df$VAF) & df$VAF > 0, c("Sample", "VAF"), drop = FALSE]
-    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No VAF data"))
-    vaf_agg <- aggregate(VAF ~ Sample, data = df, max)
+    if (!vcol %in% colnames(df)) vcol <- "VAF"
+    df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df[[vcol]]) & df[[vcol]] > 0, c("Sample", vcol), drop = FALSE]
+    if (nrow(df) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No", metric_short, "data")))
+    colnames(df)[colnames(df) == vcol] <- ".metric"
+    vaf_agg <- aggregate(.metric ~ Sample, data = df, max)
     surv_df <- survival_data()
     surv_df <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
     merge_df <- merge(vaf_agg, surv_df, by = "Sample", all = FALSE)
-    if (nrow(merge_df) < 20 || !has_maxstat) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Need ≥20 samples with VAF and survival; maxstat required") + theme_void())
-    mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ VAF, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
+    if (nrow(merge_df) < 20 || !has_maxstat) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste0("Need \u226520 samples with ", metric_short, " and survival; maxstat required")) + theme_void())
+    mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ .metric, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
     if (is.null(mst)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "MaxStat failed") + theme_void())
-    merge_df$Group <- factor(ifelse(merge_df$VAF > mst$estimate, "High VAF", "Low VAF"), levels = c("High VAF", "Low VAF"))
+    high_label <- paste0("High ", metric_short)
+    low_label <- paste0("Low ", metric_short)
+    merge_df$Group <- factor(ifelse(merge_df$.metric > mst$estimate, high_label, low_label), levels = c(high_label, low_label))
     fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = merge_df)
     if (has_survminer) {
       legend_labs <- gsub("^Group=", "", names(fit$strata))
-      # Unnamed palette: first = High VAF (red), second = Low VAF (grey); Group factor ensures this order
-      p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low VAF (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = legend_labs, pval.coord = c(0, 0.05))
+      p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low ", metric_short, " (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = legend_labs, pval.coord = c(0, 0.05))
       print(p)
     } else {
       ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Install survminer") + theme_void()
@@ -4427,33 +4870,38 @@ server <- function(input, output, session) {
   )
 
   output$download_gene_summary_vaf_plot <- downloadHandler(
-    filename = function() paste0("gene_", input$gene_summary, "_vaf_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    filename = function() paste0("gene_", input$gene_summary, "_", tolower(vaf_col()), "_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
     content = function(file) {
-      g <- input$gene_summary
+      g <- input$gene_summary; vcol <- vaf_col(); metric_short <- if (vcol == "CCF") "CCF" else "VAF"
       if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 5, height = 4, dpi = 150); return(invisible(NULL)) }
-      df <- filtered_data(); df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df$VAF) & df$VAF > 0, , drop = FALSE]
-      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No VAF data") + theme_void(), width = 5, height = 4, dpi = 150); return(invisible(NULL)) }
-      p <- ggplot(df, aes(x = VAF)) + geom_histogram(bins = 25, fill = "#374e55", alpha = 0.8) + labs(x = "VAF (%)", y = "Count", title = paste("VAF distribution for", g)) + theme_minimal(base_size = 14)
+      df <- filtered_data(); if (!vcol %in% colnames(df)) vcol <- "VAF"
+      df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df[[vcol]]) & df[[vcol]] > 0, , drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No", metric_short, "data")) + theme_void(), width = 5, height = 4, dpi = 150); return(invisible(NULL)) }
+      df$.metric <- df[[vcol]]
+      p <- ggplot(df, aes(x = .metric)) + geom_histogram(bins = 25, fill = "#374e55", alpha = 0.8) + labs(x = paste0(metric_short, " (%)"), y = "Count", title = paste(metric_short, "distribution for", g)) + theme_minimal(base_size = 14)
       ggsave(file, plot = p, width = 6, height = 4, dpi = 300)
     }
   )
 
   output$download_gene_summary_vaf_survival_plot <- downloadHandler(
-    filename = function() paste0("gene_", input$gene_summary, "_vaf_survival_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
+    filename = function() paste0("gene_", input$gene_summary, "_", tolower(vaf_col()), "_survival_", format(Sys.time(), "%Y%m%d_%H%M"), ".png"),
     content = function(file) {
-      g <- input$gene_summary
+      g <- input$gene_summary; vcol <- vaf_col(); metric_short <- if (vcol == "CCF") "CCF" else "VAF"
       if (is.null(g) || g == "") { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Select a gene") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
-      df <- filtered_data(); df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df$VAF) & df$VAF > 0, c("Sample", "VAF"), drop = FALSE]
-      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No VAF data") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
-      vaf_agg <- aggregate(VAF ~ Sample, data = df, max)
+      df <- filtered_data(); if (!vcol %in% colnames(df)) vcol <- "VAF"
+      df <- df[as.character(df$Gene_for_analysis) == g & !is.na(df[[vcol]]) & df[[vcol]] > 0, c("Sample", vcol), drop = FALSE]
+      if (nrow(df) == 0) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste("No", metric_short, "data")) + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      colnames(df)[colnames(df) == vcol] <- ".metric"
+      vaf_agg <- aggregate(.metric ~ Sample, data = df, max)
       surv_df <- survival_data(); surv_df <- surv_df[!duplicated(surv_df$Sample), c("Sample", "Time_to_OS", "Censor")]
       merge_df <- merge(vaf_agg, surv_df, by = "Sample", all = FALSE)
-      if (nrow(merge_df) < 20 || !has_maxstat) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Need ≥20 samples; maxstat required") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
-      mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ VAF, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
+      if (nrow(merge_df) < 20 || !has_maxstat) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = paste0("Need \u226520 samples; maxstat required")) + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
+      mst <- tryCatch(maxstat::maxstat.test(Surv(Time_to_OS, as.numeric(Censor)) ~ .metric, data = merge_df, smethod = "LogRank", minprop = 0.2, maxprop = 0.8), error = function(e) NULL)
       if (is.null(mst)) { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "MaxStat failed") + theme_void(), width = 7, height = 5, dpi = 150); return(invisible(NULL)) }
-      merge_df$Group <- factor(ifelse(merge_df$VAF > mst$estimate, "High VAF", "Low VAF"), levels = c("High VAF", "Low VAF"))
+      high_label <- paste0("High ", metric_short); low_label <- paste0("Low ", metric_short)
+      merge_df$Group <- factor(ifelse(merge_df$.metric > mst$estimate, high_label, low_label), levels = c(high_label, low_label))
       fit <- survfit(Surv(Time_to_OS, as.numeric(Censor)) ~ Group, data = merge_df)
-      if (has_survminer) { p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low VAF (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), pval.coord = c(0, 0.05)); png(file, width = 7, height = 6, units = "in", res = 300); print(p); dev.off() } else { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer required") + theme_void(), width = 7, height = 5, dpi = 150) }
+      if (has_survminer) { legend_labs <- gsub("^Group=", "", names(fit$strata)); p <- survminer::ggsurvplot(fit, data = merge_df, risk.table = TRUE, pval = TRUE, title = paste0(g, ": High vs Low ", metric_short, " (", round(mst$estimate, 1), "%)"), xlab = "Years", palette = c("#8B0000", "#4D4D4D"), legend.labs = legend_labs, pval.coord = c(0, 0.05)); png(file, width = 7, height = 6, units = "in", res = 300); print(p); dev.off() } else { ggsave(file, plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "survminer required") + theme_void(), width = 7, height = 5, dpi = 150) }
     }
   )
 
@@ -4545,10 +4993,10 @@ server <- function(input, output, session) {
 
   output$data_table <- renderDT({
     df <- req(filtered_data())
-    cols <- c("Sample", "Gene_for_analysis", "Gene", "VAF", "variant_type", "AA_change", "Gene_Group", "Subset", "Cohort", "Age", "Sex", "Risk", "Time_to_OS", "Censor", "mutation_category")
+    cols <- c("Sample", "Gene_for_analysis", "Gene", "VAF", "CCF", "CN_at_locus", "variant_type", "AA_change", "Gene_Group", "Subset", "Cohort", "Age", "Sex", "Risk", "Time_to_OS", "Censor", "mutation_category")
     cols <- cols[cols %in% colnames(df)]
     df <- df[, cols, drop = FALSE]
-    for (nm in c("VAF", "Age", "Time_to_OS", "Censor")) {
+    for (nm in c("VAF", "CCF", "Age", "Time_to_OS", "Censor")) {
       if (nm %in% colnames(df) && is.numeric(df[[nm]])) df[[nm]] <- round(df[[nm]], 2)
     }
     datatable(df, filter = "top", options = list(pageLength = 10000, lengthChange = FALSE, scrollX = TRUE))

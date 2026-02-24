@@ -158,6 +158,286 @@ classify_amlsg_karyotype <- function(x) {
 }
 
 # =============================================================================
+# CCF (Cancer Cell Fraction) calculation from VAF and cytogenetic copy number
+# =============================================================================
+# Gene -> chromosome arm mapping for common AML genes
+# Format: gene = "chrN_arm" where arm is "p" or "q" (or "pq" for whole-chromosome genes)
+GENE_CHR_MAP <- c(
+  DNMT3A = "2p", IDH1 = "2q", SF3B1 = "2q",
+  GATA2 = "3q",
+  TET2 = "4q", KIT = "4q",
+  NPM1 = "5q",
+  ETV6 = "12p", KRAS = "12p",
+  EZH2 = "7q",
+  RAD21 = "8q",
+  JAK2 = "9p", CDKN2A = "9p",
+  SMC3 = "10q",
+  WT1 = "11p", CBL = "11q", MLL = "11q", KMT2A = "11q", ATM = "11q",
+  PTPN11 = "12q",
+  FLT3 = "13q", "FLT3-ITD" = "13q", "FLT3-TKD" = "13q", "FLT3-Other" = "13q",
+  IDH2 = "15q",
+  CBFB = "16q",
+  TP53 = "17p", NF1 = "17q", SRSF2 = "17q",
+  SETBP1 = "18q",
+  CEBPA = "19q",
+  ASXL1 = "20q",
+  RUNX1 = "21q", U2AF1 = "21q",
+  NRAS = "1p", BCOR = "Xp", SMC1A = "Xp", KDM6A = "Xp", ZRSR2 = "Xp",
+  STAG2 = "Xq", BCORL1 = "Xq", PHF6 = "Xq", ATRX = "Xq",
+  ASXL2 = "2p", CSF3R = "1p", FBXW7 = "4q", PIGA = "Xp",
+  IKZF1 = "7p", BRAF = "7q", JAK3 = "19p", MPL = "1p", CBLB = "3q"
+)
+
+# Determine per-sample copy number for each chromosome arm from NCRI binary cytogenetics
+# Returns a named list: sample_id -> named vector (e.g. c("1p"=2, "1q"=2, ..., "Xp"=2, "Y"=1))
+build_cn_from_ncri_cyto <- function(cyto_df, sex_lookup = NULL) {
+  id_col <- grep("^data_pd$|^data\\.pd$", colnames(cyto_df), value = TRUE)[1]
+  if (!length(id_col)) return(list())
+  abn_cols <- setdiff(colnames(cyto_df), id_col)
+  samples <- as.character(cyto_df[[id_col]])
+  cn_list <- list()
+
+  for (i in seq_along(samples)) {
+    sid <- samples[i]
+    is_male <- TRUE
+    if (!is.null(sex_lookup) && sid %in% names(sex_lookup)) {
+      is_male <- sex_lookup[sid] == "Male"
+    }
+
+    cn <- setNames(rep(2L, 46),
+      c(paste0(rep(1:22, each = 2), c("p", "q")), "Xp", "Xq"))
+    if (is_male) {
+      cn["Xp"] <- 1L; cn["Xq"] <- 1L
+      cn <- c(cn, Y = 1L)
+    }
+
+    row_vals <- cyto_df[i, abn_cols, drop = FALSE]
+    for (col in abn_cols) {
+      v <- as.numeric(row_vals[[col]])
+      if (is.na(v) || v == 0) next
+
+      if (grepl("^add_", col)) {
+        arm <- sub("^add_", "", col)
+        arm <- sub("x", "X", arm)
+        chr_num <- sub("[pq]$", "", arm)
+        arm_letter <- sub("^.*([pq])$", "\\1", arm)
+        key <- paste0(chr_num, arm_letter)
+        if (key %in% names(cn)) cn[key] <- cn[key] + 1L
+      } else if (grepl("^del_", col)) {
+        arm <- sub("^del_", "", col)
+        arm <- sub("x", "X", arm)
+        chr_num <- sub("[pq]$", "", arm)
+        arm_letter <- sub("^.*([pq])$", "\\1", arm)
+        key <- paste0(chr_num, arm_letter)
+        if (key %in% names(cn)) cn[key] <- max(cn[key] - 1L, 0L)
+      } else if (grepl("^dup_", col)) {
+        arm <- sub("^dup_", "", col)
+        arm <- sub("x", "X", arm)
+        chr_num <- sub("[pq]$", "", arm)
+        arm_letter <- sub("^.*([pq])$", "\\1", arm)
+        key <- paste0(chr_num, arm_letter)
+        if (key %in% names(cn)) cn[key] <- cn[key] + 1L
+      } else if (grepl("^minus", col)) {
+        chr <- sub("^minus", "", col)
+        chr <- sub("x$", "X", chr); chr <- sub("y$", "Y", chr)
+        if (chr == "Y") {
+          if ("Y" %in% names(cn)) cn["Y"] <- 0L
+        } else {
+          kp <- paste0(chr, "p"); kq <- paste0(chr, "q")
+          if (kp %in% names(cn)) cn[kp] <- max(cn[kp] - 1L, 0L)
+          if (kq %in% names(cn)) cn[kq] <- max(cn[kq] - 1L, 0L)
+        }
+      } else if (grepl("^plus", col)) {
+        chr <- sub("^plus", "", col)
+        chr <- sub("x$", "X", chr); chr <- sub("y$", "Y", chr)
+        if (chr == "Y") {
+          cn["Y"] <- if ("Y" %in% names(cn)) cn["Y"] + 1L else 1L
+        } else {
+          kp <- paste0(chr, "p"); kq <- paste0(chr, "q")
+          if (kp %in% names(cn)) cn[kp] <- cn[kp] + 1L
+          if (kq %in% names(cn)) cn[kq] <- cn[kq] + 1L
+        }
+      }
+    }
+    cn_list[[sid]] <- cn
+  }
+  cn_list
+}
+
+# Determine per-sample CN from AMLSG clinical cytogenetic flags
+build_cn_from_amlsg_clin <- function(clin_df) {
+  cn_list <- list()
+  samples <- as.character(clin_df$PDID)
+
+  for (i in seq_along(samples)) {
+    sid <- samples[i]
+    is_male <- (!is.na(clin_df$gender[i]) && clin_df$gender[i] == 1)
+
+    cn <- setNames(rep(2L, 46),
+      c(paste0(rep(1:22, each = 2), c("p", "q")), "Xp", "Xq"))
+    if (is_male) {
+      cn["Xp"] <- 1L; cn["Xq"] <- 1L
+      cn <- c(cn, Y = 1L)
+    }
+
+    get_flag <- function(col) {
+      if (col %in% colnames(clin_df)) {
+        v <- as.numeric(clin_df[[col]][i])
+        return(!is.na(v) && v == 1)
+      }
+      FALSE
+    }
+
+    if (get_flag("minus5_5q")) { cn["5p"] <- max(cn["5p"] - 1L, 0L); cn["5q"] <- max(cn["5q"] - 1L, 0L) }
+    if (get_flag("minus7"))    { cn["7p"] <- max(cn["7p"] - 1L, 0L); cn["7q"] <- max(cn["7q"] - 1L, 0L) }
+    if (get_flag("minus7q"))   { cn["7q"] <- max(cn["7q"] - 1L, 0L) }
+    if (get_flag("plus8_8q"))  { cn["8p"] <- cn["8p"] + 1L; cn["8q"] <- cn["8q"] + 1L }
+    if (get_flag("minus9q"))   { cn["9q"] <- max(cn["9q"] - 1L, 0L) }
+    if (get_flag("mono12_12p_abn12p")) { cn["12p"] <- max(cn["12p"] - 1L, 0L) }
+    if (get_flag("plus13"))    { cn["13p"] <- cn["13p"] + 1L; cn["13q"] <- cn["13q"] + 1L }
+    if (get_flag("mono17_17p_abn17p")) { cn["17p"] <- max(cn["17p"] - 1L, 0L) }
+    if (get_flag("minus18_18q")) { cn["18p"] <- max(cn["18p"] - 1L, 0L); cn["18q"] <- max(cn["18q"] - 1L, 0L) }
+    if (get_flag("minus20_20q")) { cn["20q"] <- max(cn["20q"] - 1L, 0L) }
+    if (get_flag("plus21"))    { cn["21p"] <- cn["21p"] + 1L; cn["21q"] <- cn["21q"] + 1L }
+    if (get_flag("plus22"))    { cn["22p"] <- cn["22p"] + 1L; cn["22q"] <- cn["22q"] + 1L }
+    if (get_flag("minusY"))    { if ("Y" %in% names(cn)) cn["Y"] <- 0L }
+    if (get_flag("plus11_11q")) { cn["11q"] <- cn["11q"] + 1L }
+    if (get_flag("mono4_4q_abn4q")) { cn["4q"] <- max(cn["4q"] - 1L, 0L) }
+    if (get_flag("abn3q_other")) { cn["3q"] <- cn["3q"] + 1L }
+
+    cn_list[[sid]] <- cn
+  }
+  cn_list
+}
+
+# Parse ISCN karyotype string to extract chromosome-level CN adjustments
+# Used for AMLSG (from AMLSG_Karyotypes.txt), Beat AML, TCGA when raw karyotype available
+parse_iscn_to_cn <- function(karyotype_str, is_male = TRUE) {
+  cn <- setNames(rep(2L, 46),
+    c(paste0(rep(1:22, each = 2), c("p", "q")), "Xp", "Xq"))
+  if (is_male) {
+    cn["Xp"] <- 1L; cn["Xq"] <- 1L
+    cn <- c(cn, Y = 1L)
+  }
+  s <- as.character(karyotype_str)
+  if (is.na(s) || trimws(s) == "" || grepl("no metaphases|no analysis|no material|^na$|Keine", s, ignore.case = TRUE))
+    return(cn)
+
+  s <- gsub("^\"(.*)\"$", "\\1", trimws(s))
+  main_clone <- sub("\\[.*", "", s)
+  main_clone <- sub("/.*", "", main_clone)
+
+  gains <- regmatches(main_clone, gregexpr("\\+(\\d+|X|Y)(?=[^0-9]|$)", main_clone, perl = TRUE))[[1]]
+  for (g in gains) {
+    chr <- sub("^\\+", "", g)
+    if (chr == "Y") {
+      cn["Y"] <- if ("Y" %in% names(cn)) cn["Y"] + 1L else 1L
+    } else if (chr == "X") {
+      cn["Xp"] <- cn["Xp"] + 1L; cn["Xq"] <- cn["Xq"] + 1L
+    } else if (as.integer(chr) <= 22) {
+      cn[paste0(chr, "p")] <- cn[paste0(chr, "p")] + 1L
+      cn[paste0(chr, "q")] <- cn[paste0(chr, "q")] + 1L
+    }
+  }
+
+  losses <- regmatches(main_clone, gregexpr("-(\\d+|X|Y)(?=[^0-9]|$)", main_clone, perl = TRUE))[[1]]
+  for (l in losses) {
+    chr <- sub("^-", "", l)
+    if (chr == "Y") {
+      if ("Y" %in% names(cn)) cn["Y"] <- 0L
+    } else if (chr == "X") {
+      cn["Xp"] <- max(cn["Xp"] - 1L, 0L); cn["Xq"] <- max(cn["Xq"] - 1L, 0L)
+    } else if (as.integer(chr) <= 22) {
+      cn[paste0(chr, "p")] <- max(cn[paste0(chr, "p")] - 1L, 0L)
+      cn[paste0(chr, "q")] <- max(cn[paste0(chr, "q")] - 1L, 0L)
+    }
+  }
+
+  dels <- regmatches(main_clone, gregexpr("del\\((\\d+|X|Y)\\)\\(([pq])", main_clone, perl = TRUE))[[1]]
+  for (d in dels) {
+    m <- regmatches(d, regexec("del\\((\\d+|X|Y)\\)\\(([pq])", d))[[1]]
+    if (length(m) >= 3) {
+      chr <- m[2]; arm <- m[3]
+      key <- paste0(chr, arm)
+      if (key %in% names(cn)) cn[key] <- max(cn[key] - 1L, 0L)
+    }
+  }
+
+  adds <- regmatches(main_clone, gregexpr("add\\((\\d+|X|Y)\\)\\(([pq])", main_clone, perl = TRUE))[[1]]
+  for (a in adds) {
+    m <- regmatches(a, regexec("add\\((\\d+|X|Y)\\)\\(([pq])", a))[[1]]
+    if (length(m) >= 3) {
+      chr <- m[2]; arm <- m[3]
+      key <- paste0(chr, arm)
+      if (key %in% names(cn)) cn[key] <- cn[key] + 1L
+    }
+  }
+
+  cn
+}
+
+# Build CN map from ISCN karyotype strings (AMLSG karyotypes, Beat AML, TCGA)
+build_cn_from_iscn <- function(sample_ids, karyotype_strs, sex_vec) {
+  cn_list <- list()
+  for (i in seq_along(sample_ids)) {
+    sid <- as.character(sample_ids[i])
+    is_male <- !is.na(sex_vec[i]) && sex_vec[i] == "Male"
+    cn_list[[sid]] <- parse_iscn_to_cn(karyotype_strs[i], is_male)
+  }
+  cn_list
+}
+
+# Look up CN for a gene using GENE_CHR_MAP and a cn_list (sample -> CN vector)
+get_cn_for_gene <- function(gene, sample, cn_list, sex = NA_character_) {
+  gene <- as.character(gene)
+  chr_arm <- GENE_CHR_MAP[gene]
+  if (is.na(chr_arm)) return(2L)  # unknown gene location, assume diploid
+
+  chr_num <- sub("[pq]$", "", chr_arm)
+  arm_letter <- sub("^.*([pq])$", "\\1", chr_arm)
+  key <- paste0(chr_num, arm_letter)
+
+  if (chr_num == "X" && !is.na(sex) && sex == "Male") {
+    default_cn <- 1L
+  } else if (chr_num == "Y") {
+    default_cn <- ifelse(!is.na(sex) && sex == "Male", 1L, 0L)
+  } else {
+    default_cn <- 2L
+  }
+
+  sample <- as.character(sample)
+  if (sample %in% names(cn_list)) {
+    cn_vec <- cn_list[[sample]]
+    if (key %in% names(cn_vec)) return(cn_vec[key])
+  }
+  default_cn
+}
+
+# Compute CCF column for a data frame with Sample, Gene, VAF, Sex columns
+# cn_list: named list of per-sample CN vectors (from build_cn_from_* functions)
+# CCF = VAF_pct * CN_total, capped at 100; where VAF is in 0-100 scale
+compute_ccf <- function(df, cn_list) {
+  n <- nrow(df)
+  ccf <- rep(NA_real_, n)
+  cn_used <- rep(NA_integer_, n)
+
+  for (i in seq_len(n)) {
+    vaf <- df$VAF[i]
+    if (is.na(vaf)) next
+    gene <- as.character(df$Gene[i])
+    sample <- as.character(df$Sample[i])
+    sex <- if ("Sex" %in% colnames(df)) as.character(df$Sex[i]) else NA_character_
+
+    cn <- get_cn_for_gene(gene, sample, cn_list, sex)
+    cn_used[i] <- cn
+    ccf[i] <- min(vaf / 100 * cn * 100, 100)
+  }
+  df$CCF <- round(ccf, 2)
+  df$CN_at_locus <- cn_used
+  df
+}
+
+# =============================================================================
 # 0. Reference gene set (AML-SG + UK-NCRI) for filtering TCGA and Beat AML
 # =============================================================================
 cat("Building reference gene set from AML-SG and UK-NCRI...\n")
@@ -241,16 +521,30 @@ if ("OS_MONTHS" %in% colnames(tcga_clin)) {
 } else {
   tcga_clin$Time_to_OS <- NA_real_
 }
+# OS_STATUS in cBioPortal format can be "1:DECEASED" or "0:LIVING" (prefix: 1 = event, 0 = censored)
 if ("OS_STATUS" %in% colnames(tcga_clin)) {
-  tcga_clin$Censor <- ifelse(toupper(tcga_clin$OS_STATUS) %in% c("DECEASED", "1"), 1, 0)
+  os <- as.character(tcga_clin$OS_STATUS)
+  tcga_clin$Censor <- ifelse(grepl("DECEASED", os, ignore.case = TRUE) | (grepl("^1:", os) | os == "1"), 1, 0)
 } else {
   tcga_clin$Censor <- NA_real_
 }
 tcga_clin$Subset <- "De novo"  # TCGA is primary AML
-# TCGA may have cytogenetic risk in sample file or need to derive from karyotype
+# TCGA Risk: use cytogenetic risk column if present; else derive from CYTOGENETIC_ABNORMALITY_TYPE (patient file)
 risk_col <- grep("Cytogenetic.Risk|RISK|CYTOGENETIC", colnames(tcga_clin), value = TRUE, ignore.case = TRUE)
-if (length(risk_col) > 0) {
-  tcga_clin$Risk <- ifelse(tcga_clin[[risk_col[1]]] %in% c("Favorable", "Intermediate", "Adverse"), 
+# Prefer column that already has Favorable/Intermediate/Adverse
+risk_eln <- risk_col[grepl("risk|Risk", risk_col) & !grepl("ABNORMALITY|CODE", risk_col)]
+if (length(risk_eln) > 0 && any(tcga_clin[[risk_eln[1]]] %in% c("Favorable", "Intermediate", "Adverse"))) {
+  tcga_clin$Risk <- ifelse(tcga_clin[[risk_eln[1]]] %in% c("Favorable", "Intermediate", "Adverse"),
+                           as.character(tcga_clin[[risk_eln[1]]]), "Unknown")
+} else if ("CYTOGENETIC_ABNORMALITY_TYPE" %in% colnames(tcga_clin)) {
+  cyto <- trimws(as.character(tcga_clin$CYTOGENETIC_ABNORMALITY_TYPE))
+  tcga_clin$Risk <- "Unknown"
+  tcga_clin$Risk[grepl("t\\(8;21\\)|inv\\(16\\)|t\\(15;17\\)", cyto, ignore.case = TRUE)] <- "Favorable"
+  tcga_clin$Risk[grepl("Complex|del\\(5q\\)|5q-|del\\(7q\\)|7q-|-5|-7", cyto, ignore.case = TRUE)] <- "Adverse"
+  tcga_clin$Risk[grepl("^Normal$|\\|Normal|Normal\\|", cyto) & tcga_clin$Risk == "Unknown"] <- "Intermediate"
+  tcga_clin$Risk[cyto != "" & !is.na(cyto) & tcga_clin$Risk == "Unknown"] <- "Intermediate"  # other abnormalities
+} else if (length(risk_col) > 0) {
+  tcga_clin$Risk <- ifelse(tcga_clin[[risk_col[1]]] %in% c("Favorable", "Intermediate", "Adverse"),
                            tcga_clin[[risk_col[1]]], "Unknown")
 } else {
   tcga_clin$Risk <- "Unknown"
@@ -749,8 +1043,11 @@ if (file.exists(prog_path)) {
   # File has 205 header cols and 206 data cols; first column = sample ID (becomes row names)
   prog <- read.delim(prog_path, stringsAsFactors = FALSE, check.names = FALSE, row.names = 1)
   prog$Sample <- gsub("^\"|\"$", "", rownames(prog))
-  eln_num <- as.numeric(prog[, 1])   # first column after row names is numeric ELN (1/2/3)
-  prog$Risk <- ifelse(eln_num == 1, "Favorable", ifelse(eln_num == 2, "Intermediate", ifelse(eln_num == 3, "Adverse", "Unknown")))
+  # ELN 2017: eln_2017 column: 1 = Adverse, 2 = Intermediate, 3 = Favorable
+  eln_col <- grep("eln_2017", colnames(prog), ignore.case = TRUE, value = TRUE)[1]
+  if (length(eln_col) == 0) eln_col <- colnames(prog)[1]
+  eln_num <- as.numeric(prog[[eln_col]])
+  prog$Risk <- ifelse(eln_num == 1, "Adverse", ifelse(eln_num == 2, "Intermediate", ifelse(eln_num == 3, "Favorable", "Unknown")))
   prog$Time_to_OS <- as.numeric(prog$os) * 365.25   # os in years -> days
   prog$Censor <- as.numeric(prog$os_status)         # 1 = event, 0 = censored
   match_idx <- match(ukncri_clin$Sample, prog$Sample)
@@ -767,7 +1064,7 @@ if (file.exists(prog_path)) {
   }
   cat("  UK-NCRI: enriched", sum(hit), "samples with ELN and OS/Censor from aml_prognosis_updated.tsv\n", sep = " ")
 } else {
-  cat("  UK-NCRI: aml_prognosis_updated.tsv not found. Place in UK_NCRI_data/ or ~/Downloads/data/\n", sep = " ")
+  warning("UK-NCRI: aml_prognosis_updated.tsv not found. Survival and ELN risk will be missing for UK-NCRI. Place the file in UK_NCRI_data/, UK_NCRI_data/data/, or ~/Downloads/data/. Expected columns: sample ID (row names), eln_2017 (1=Adverse, 2=Intermediate, 3=Favorable), os (years), os_status (1=event, 0=censored).")
 }
 
 # UK-NCRI Normal/Other from UK_NCRI_Cytogenetics_data.csv: Normal only when NO amp, del, or translocation (all abnormality columns 0)
@@ -927,10 +1224,118 @@ cat("  Samples with age data: ", sum(!is.na(all_data$Age)), " / ", length(unique
 cat("  Samples with sex data: ", sum(!is.na(all_data$Sex)), " / ", length(unique(all_data$Sample)), "\n", sep = "")
 
 # =============================================================================
+# 8b. Compute Cancer Cell Fraction (CCF) using VAF and cytogenetic copy number
+# =============================================================================
+cat("\nComputing CCF from VAF and cytogenetic copy number...\n")
+
+# Build per-cohort CN maps
+cn_all <- list()
+
+# UK-NCRI: use binary cytogenetics columns
+cyto_path <- file.path(getwd(), "UK_NCRI_data", "UK_NCRI_Cytogenetics_data.csv")
+if (!file.exists(cyto_path)) cyto_path <- file.path(getwd(), "UK_NCRI_data", "data", "UK_NCRI_Cytogenetics_data.csv")
+if (file.exists(cyto_path)) {
+  cyto <- read.csv(cyto_path, stringsAsFactors = FALSE, skip = 1, check.names = FALSE)
+  ncri_sex_lookup <- setNames(all_data$Sex[match(unique(all_data$Sample[all_data$Cohort == "UK-NCRI"]),
+    all_data$Sample)], unique(all_data$Sample[all_data$Cohort == "UK-NCRI"]))
+  cn_ncri <- build_cn_from_ncri_cyto(cyto, ncri_sex_lookup)
+  cn_all <- c(cn_all, cn_ncri)
+  cat("  UK-NCRI: built CN map for ", length(cn_ncri), " samples from cytogenetics\n", sep = "")
+} else {
+  cat("  UK-NCRI: cytogenetics file not found; using diploid CN\n")
+}
+
+# AML-SG: use clinical cytogenetic flags + ISCN karyotype strings
+if (exists("amlsg_clin") && is.data.frame(amlsg_clin)) {
+  cn_amlsg_clin <- build_cn_from_amlsg_clin(amlsg_clin)
+  cn_all <- c(cn_all, cn_amlsg_clin)
+  cat("  AML-SG: built CN map for ", length(cn_amlsg_clin), " samples from clinical cytogenetic flags\n", sep = "")
+
+  karyo_path <- file.path(getwd(), "amlsg_data", "AMLSG_Karyotypes.txt")
+  if (file.exists(karyo_path)) {
+    amlsg_karyo <- read.delim(karyo_path, stringsAsFactors = FALSE, check.names = FALSE)
+    pdid_col <- grep("^PDID$|^pdid$", colnames(amlsg_karyo), value = TRUE)[1]
+    karyo_col <- grep("^karyotype$|^Karyotype$", colnames(amlsg_karyo), value = TRUE)[1]
+    if (length(pdid_col) && length(karyo_col)) {
+      amlsg_sex <- setNames(amlsg_clin$Sex, amlsg_clin$Sample)
+      for (j in seq_len(nrow(amlsg_karyo))) {
+        sid <- as.character(amlsg_karyo[[pdid_col]][j])
+        kstr <- as.character(amlsg_karyo[[karyo_col]][j])
+        sx <- if (sid %in% names(amlsg_sex)) amlsg_sex[sid] else NA_character_
+        is_m <- !is.na(sx) && sx == "Male"
+        parsed_cn <- parse_iscn_to_cn(kstr, is_m)
+        if (sid %in% names(cn_all)) {
+          existing <- cn_all[[sid]]
+          for (arm in names(parsed_cn)) {
+            if (arm %in% names(existing) && parsed_cn[arm] != existing[arm]) {
+              existing[arm] <- parsed_cn[arm]
+            } else if (!arm %in% names(existing)) {
+              existing[arm] <- parsed_cn[arm]
+            }
+          }
+          cn_all[[sid]] <- existing
+        } else {
+          cn_all[[sid]] <- parsed_cn
+        }
+      }
+      cat("  AML-SG: refined CN map using ", nrow(amlsg_karyo), " ISCN karyotype strings\n", sep = "")
+    }
+  }
+}
+
+# TCGA and Beat AML: default to diploid CN with sex-chromosome correction
+tcga_samples <- unique(all_data$Sample[all_data$Cohort == "TCGA"])
+for (sid in tcga_samples) {
+  if (!sid %in% names(cn_all)) {
+    sx <- all_data$Sex[match(sid, all_data$Sample)]
+    is_m <- !is.na(sx) && sx == "Male"
+    cn <- setNames(rep(2L, 46), c(paste0(rep(1:22, each = 2), c("p", "q")), "Xp", "Xq"))
+    if (is_m) { cn["Xp"] <- 1L; cn["Xq"] <- 1L; cn <- c(cn, Y = 1L) }
+    cn_all[[sid]] <- cn
+  }
+}
+
+beataml_samples <- unique(all_data$Sample[all_data$Cohort == "Beat AML"])
+for (sid in beataml_samples) {
+  if (!sid %in% names(cn_all)) {
+    sx <- all_data$Sex[match(sid, all_data$Sample)]
+    is_m <- !is.na(sx) && sx == "Male"
+    cn <- setNames(rep(2L, 46), c(paste0(rep(1:22, each = 2), c("p", "q")), "Xp", "Xq"))
+    if (is_m) { cn["Xp"] <- 1L; cn["Xq"] <- 1L; cn <- c(cn, Y = 1L) }
+    cn_all[[sid]] <- cn
+  }
+}
+
+# Beat AML: parse ISCN karyotype strings if available
+if (exists("beataml_clin") && is.data.frame(beataml_clin)) {
+  karyo_col <- grep("^karyotype$", colnames(beataml_clin), ignore.case = TRUE, value = TRUE)[1]
+  if (length(karyo_col)) {
+    k_str <- as.character(beataml_clin[[karyo_col]])
+    for (j in seq_len(nrow(beataml_clin))) {
+      sid <- as.character(beataml_clin$Sample[j])
+      if (is.na(k_str[j]) || trimws(k_str[j]) == "" || grepl("^NA$|Not Available", k_str[j], ignore.case = TRUE)) next
+      sx <- if ("Sex" %in% colnames(beataml_clin)) as.character(beataml_clin$Sex[j]) else NA_character_
+      is_m <- !is.na(sx) && sx == "Male"
+      cn_all[[sid]] <- parse_iscn_to_cn(k_str[j], is_m)
+    }
+    cat("  Beat AML: parsed ", sum(!is.na(k_str) & trimws(k_str) != ""), " karyotype strings for CN\n", sep = "")
+  }
+}
+
+cat("  Total CN maps: ", length(cn_all), " samples\n", sep = "")
+
+# Apply CCF calculation to all_data
+all_data <- compute_ccf(all_data, cn_all)
+n_ccf <- sum(!is.na(all_data$CCF))
+cat("  CCF computed for ", n_ccf, " / ", nrow(all_data), " mutations\n", sep = "")
+cat("  CCF median: ", round(median(all_data$CCF, na.rm = TRUE), 1), "%, mean: ",
+    round(mean(all_data$CCF, na.rm = TRUE), 1), "%\n", sep = "")
+
+# =============================================================================
 # 9. Save as AML_Meta_Cohort_v2
 # =============================================================================
 cat("\nSaving AML_Meta_Cohort_v2...\n")
-AML_Meta_Cohort_v2 <- all_data[, c("Sample", "Gene", "VAF", "Cohort", "Subset", "Time_to_OS", "Censor", 
+AML_Meta_Cohort_v2 <- all_data[, c("Sample", "Gene", "VAF", "CCF", "CN_at_locus", "Cohort", "Subset", "Time_to_OS", "Censor", 
                                     "variant_type", "mutation_category", "AA_change", "Gene_Group",
                                     "Age", "Sex", "Risk", "Karyotype",
                                     "WBC", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent", "LDH")]
@@ -954,4 +1359,7 @@ cat("ELN Risk: Standardized to Favorable/Intermediate/Adverse/Unknown\n")
 cat("Beat AML consensus mutations: FLT3-ITD, NPM1, RUNX1, ASXL1, TP53 added from clinical file\n")
 cat("Mutation frequencies: Checked across cohorts (see above)\n")
 cat("Clinical variables: WBC, Hemoglobin, Platelet, BM_blast_percent, PB_blast_percent, LDH captured where available per cohort\n")
+cat("CCF: Estimated Cancer Cell Fraction = VAF * CN_at_locus, capped at 100%\n")
+cat("  CN derived from: UK-NCRI cytogenetics binary, AML-SG clinical flags + ISCN karyotype, Beat AML ISCN karyotype\n")
+cat("  Sex chromosome correction: Male X = CN 1 (hemizygous); Female X = CN 2 (diploid)\n")
 cat("\nDone!\n")
