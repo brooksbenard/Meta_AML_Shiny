@@ -537,6 +537,11 @@ ui <- fluidPage(
      .navbar .navbar-nav>.active>a,.navbar .navbar-nav>.active>a:hover,.navbar .navbar-nav>.active>a:focus{background:rgba(255,255,255,0.2) !important;color:#fff !important;border:none;}
      .navbar .navbar-collapse{border:none;}
      .navbar .navbar-brand a:hover{background:transparent !important;color:#fff !important;}
+     .navbar .container-fluid{display:flex;justify-content:space-between;align-items:center;}
+     .navbar .navbar-nav{margin-left:auto;margin-right:0;}
+     .navbar .navbar-nav .glyphicon{margin-right:6px;font-size:0.9em;}
+     .navbar .navbar-nav>li>a{border-left:1px solid rgba(255,255,255,0.35);padding-left:14px;margin-left:0;}
+     .navbar .navbar-nav>li:first-child>a{border-left:none;padding-left:12px;}
      #drug_subset_wrap .shiny-input-container{width:140px !important;min-width:140px;}
      /* Loading overlay spinner */
      #data-loading-overlay .loading-spinner{width:48px;height:48px;margin:0 auto 16px;border:4px solid #e2e8f0;border-top-color:#374e55;border-radius:50%;animation:data-load-spin 0.9s linear infinite;}
@@ -630,7 +635,7 @@ ui <- fluidPage(
   navbarPage(
     title = actionLink("brand_to_about", "Meta AML Explorer", style = "color: #fff; font-size: 22px; font-weight: 700; text-decoration: none;"),
     id = "main_nav",
-    tabPanel("About", value = "about",
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-info-sign\" aria-hidden=\"true\"></span> About"), value = "about",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         h2("Welcome to Meta AML Explorer"),
         p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " tab offers the following analyses:"),
@@ -653,15 +658,6 @@ ui <- fluidPage(
         h2("Caveats"),
         p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
         p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity."),
-        h2("About the author"),
-        div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 10px;",
-          tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
-          div(
-            p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
-            p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
-            p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
-          )
-        ),
         hr(),
         p(style = "font-size: 0.9em; color: #666;",
           "© ", format(Sys.Date(), "%Y"), " Brooks Benard. Licensed under ",
@@ -669,7 +665,7 @@ ui <- fluidPage(
         )
       )
     ),
-    tabPanel("Meta AML4", value = "meta_aml4",
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-stats\" aria-hidden=\"true\"></span> Meta AML4"), value = "meta_aml4",
       conditionalPanel(
         condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
         sidebarLayout(
@@ -710,7 +706,7 @@ ui <- fluidPage(
         )
       )
     ),
-    tabPanel("Downloads", value = "downloads",
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-download-alt\" aria-hidden=\"true\"></span> Downloads"), value = "downloads",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         div(style = "background: #f8f9fa; border-left: 4px solid #374e55; border-radius: 6px; padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);",
           h4(style = "margin-top: 0; color: #374e55; font-weight: 600;", "Meta AML aggregated clinical"),
@@ -725,6 +721,19 @@ ui <- fluidPage(
             "MAF-style mutation table: one row per variant across all four cohorts. Variants are cleaned and re-annotated: standard MAF columns (Hugo_Symbol, Chromosome, positions, Variant_Classification, Variant_Type, HGVSp_Short, etc.), sample and cohort identifiers, and VAF. Variant classification and type are normalized across sources; gene symbols and protein changes are harmonized. Built from TCGA LAML, Beat AML2, AML-SG (Genetic + FLT3-ITD), and UK-NCRI mutation files. Suitable for downstream MAF-based tools and custom analyses."),
           p(style = "margin-bottom: 12px; font-size: 14px;", strong("File size: "), textOutput("doc_maf_size", inline = TRUE)),
           downloadButton("download_agg_maf", "Download Meta_AML_aggregated_mutations.maf.tsv", class = "btn-primary", style = "background: #374e55; border-color: #374e55;")
+        )
+      )
+    ),
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-envelope\" aria-hidden=\"true\"></span> Contact"), value = "contact",
+      div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
+        h2("Contact"),
+        div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 10px;",
+          tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
+          div(
+            p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
+            p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
+            p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
+          )
         )
       )
     )
