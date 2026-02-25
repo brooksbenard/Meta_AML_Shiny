@@ -837,12 +837,12 @@ server <- function(input, output, session) {
             column(5, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 380)))
           ),
           fluidRow(
-            column(4, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 400))),
-            column(4, wellPanel(h4("Sex by Dataset"), plotOutput("overview_sex_dataset_plot", height = 400))),
-            column(4, wellPanel(h4("ELN 2022 Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 400)))
+            column(4, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("Sex by Dataset"), plotOutput("overview_sex_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("ELN 2022 Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 260)))
           ),
           fluidRow(
-            column(12, wellPanel(h4("Recurrently Mutated Genes"), p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Genes mutated in more than 1% of samples. Stacked by dataset."), plotOutput("overview_gene_freq_plot", height = 450)))
+            column(12, wellPanel(h4("Recurrently Mutated Genes"), plotOutput("overview_gene_freq_plot", height = 450)))
           )
         ),
         tabPanel("All Gene Associations",
@@ -1034,12 +1034,12 @@ server <- function(input, output, session) {
             column(5, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 380)))
           ),
           fluidRow(
-            column(4, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 400))),
-            column(4, wellPanel(h4("Sex by Dataset"), plotOutput("overview_sex_dataset_plot", height = 400))),
-            column(4, wellPanel(h4("ELN 2022 Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 400)))
+            column(4, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("Sex by Dataset"), plotOutput("overview_sex_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("ELN 2022 Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 260)))
           ),
           fluidRow(
-            column(12, wellPanel(h4("Recurrently Mutated Genes"), p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Genes mutated in more than 1% of samples. Stacked by dataset."), plotOutput("overview_gene_freq_plot", height = 450)))
+            column(12, wellPanel(h4("Recurrently Mutated Genes"), plotOutput("overview_gene_freq_plot", height = 450)))
           ),
           fluidRow(
             column(12, wellPanel(
@@ -1453,6 +1453,7 @@ server <- function(input, output, session) {
     ggplot(udf, aes(x = Cohort, y = Age, fill = Cohort)) +
       geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
+      scale_y_continuous(labels = function(x) round(x)) +
       labs(x = NULL, y = "Age (years)") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
@@ -1477,8 +1478,9 @@ server <- function(input, output, session) {
     tbl$Risk <- factor(tbl$Risk, levels = c("Favorable", "Intermediate", "Adverse"))
     ggplot(tbl, aes(x = Cohort, y = Pct, fill = Risk)) +
       geom_bar(stat = "identity", position = "stack") +
-      geom_text(aes(label = ifelse(Pct >= 2, paste0(round(Pct, 1), "%"), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
+      geom_text(aes(label = ifelse(Pct >= 2, round(Pct), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
       scale_fill_manual(values = PAL_RISK, na.value = "gray70") +
+      scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
       labs(x = NULL, y = "Percentage of patients (%)", fill = "ELN 2022 Risk") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
@@ -1505,8 +1507,9 @@ server <- function(input, output, session) {
     pal_sex <- c("Male" = "#6a51a3", "Female" = "#43a2ca", "Unknown" = "gray90")
     ggplot(tbl, aes(x = Cohort, y = Pct, fill = Sex)) +
       geom_bar(stat = "identity", position = "stack") +
-      geom_text(aes(label = ifelse(Pct >= 2, paste0(round(Pct, 1), "%"), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
+      geom_text(aes(label = ifelse(Pct >= 2, round(Pct), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
       scale_fill_manual(values = pal_sex, na.value = "gray90") +
+      scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
       labs(x = NULL, y = "Percentage of patients (%)", fill = "Sex") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
@@ -1537,7 +1540,7 @@ server <- function(input, output, session) {
     gene_totals_plot$Gene <- factor(gene_totals_plot$Gene, levels = gene_order)
     ggplot(tbl, aes(x = Gene, y = Pct, fill = Cohort)) +
       geom_col(position = "stack", width = 0.7) +
-      geom_text(data = gene_totals_plot, aes(x = Gene, y = Pct, label = paste0(round(Pct, 1), "%")), inherit.aes = FALSE, vjust = -0.3, size = 4.5, fontface = "bold") +
+      geom_text(data = gene_totals_plot, aes(x = Gene, y = Pct, label = round(Pct, 1)), inherit.aes = FALSE, vjust = -0.3, size = 4.5, fontface = "bold") +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
       scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
       labs(x = NULL, y = "% of samples mutated", fill = "Dataset") +
