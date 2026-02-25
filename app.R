@@ -726,13 +726,16 @@ ui <- fluidPage(
     ),
     tabPanel(HTML("<span class=\"glyphicon glyphicon-envelope\" aria-hidden=\"true\"></span> Contact"), value = "contact",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
-        h2("Contact"),
-        div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 10px;",
-          tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
-          div(
-            p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
-            p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
-            p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
+        div(style = "background: #f8f9fa; border-left: 4px solid #374e55; border-radius: 6px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);",
+          p(style = "margin: 0 0 18px 0; color: #444; line-height: 1.6; font-size: 15px;",
+            "I am the sole developer and maintainer of this site. Please reach out if you encounter any issues with functionality, find any data inaccuracies, or have suggestions or requests for added functionality."),
+          div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 0;",
+            tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
+            div(
+              p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
+              p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
+              p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
+            )
           )
         )
       )
