@@ -526,14 +526,28 @@ ui <- fluidPage(
      .welcome-page h2:first-of-type{margin-top:0;}
      .welcome-page p{font-size:15px;line-height:1.6;}
      .welcome-page ul{font-size:15px;line-height:1.7;}
-     .welcome-page ul.about-features-list{list-style:none;padding-left:24px;}
-     .welcome-page ul.about-features-list li{display:flex;align-items:flex-start;margin-bottom:8px;}
-     .welcome-page ul.about-features-list .about-feature-icon{width:28px;min-width:28px;min-height:1.5em;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:10px;color:#374e55;}
+     .welcome-page ul.about-features-list{list-style:none;padding-left:24px;margin:0 0 0 0;}
+     .welcome-page ul.about-features-list li{display:flex;align-items:center;margin-bottom:12px;}
+     .welcome-page ul.about-features-list li:last-child{margin-bottom:0;}
+     .welcome-page ul.about-features-list .about-feature-icon{width:28px;min-width:28px;height:1.5em;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:12px;color:#374e55;}
      .welcome-page ul.about-features-list .about-feature-icon i,.welcome-page ul.about-features-list .about-feature-icon .glyphicon{font-size:1.15em;}
-     .welcome-page ul.about-features-list .about-feature-text{line-height:1.55;flex:1;min-width:0;}
+     .welcome-page ul.about-features-list .about-feature-text{line-height:1.5;flex:1;min-width:0;margin:0;padding:0;}
+     .welcome-page .caveat-toggle{margin-top:12px;border:1px solid #dee2e6;border-radius:6px;overflow:hidden;}
+     .welcome-page .caveat-toggle summary{padding:10px 14px;background:#f8f9fa;cursor:pointer;font-weight:600;color:#374e55;list-style:none;display:flex;align-items:center;gap:8px;}
+     .welcome-page .caveat-toggle summary::-webkit-details-marker{display:none;}
+     .welcome-page .caveat-toggle summary::before{content:'\u25b8';font-size:0.75em;transition:transform 0.2s;}
+     .welcome-page .caveat-toggle[open] summary::before{transform:rotate(90deg);}
+     .welcome-page .caveat-toggle .caveat-toggle-body{padding:12px 14px 14px;background:#fff;border-top:1px solid #dee2e6;}
+     .welcome-page .caveat-toggle + .caveat-toggle{margin-top:8px;}
+     .welcome-page .caveats-panel{background:#f5f6f8;padding:18px 20px;border-radius:8px;margin-top:1.2em;border:1px solid #e8eaed;}
+     .welcome-page .caveats-panel h2{font-size:1.25em;margin-top:0;color:#374e55;}
      #main_nav .nav-tabs{margin-bottom:0;border-bottom:none;}
      #main_nav .nav-tabs .nav-link{font-weight:600;color:#374e55;}
      #main_nav .nav-tabs .nav-link.active{background:#374e55;color:#fff;border-color:#374e55;}
+     .navbar-page-wrapper .container-fluid{width:100%;max-width:100%;}
+     .navbar-page-wrapper .tab-content{width:100%;}
+     .navbar-page-wrapper .tab-pane{width:100%;}
+     .navbar-page-wrapper .row{margin-left:0;margin-right:0;}
      /* Navbar header: title + tabs in one bar */
      .navbar{background:#374e55 !important;border-radius:0;border:none;margin-bottom:15px;}
      .navbar .navbar-brand{color:#fff !important;font-size:22px;font-weight:700;}
@@ -645,7 +659,8 @@ ui <- fluidPage(
       Shiny.addCustomMessageHandler('dataReady', function(tab) {});
     })();
   ")),
-  div(style = "display: flex; flex-direction: column; min-height: 100vh;",
+  div(style = "display: flex; flex-direction: column; min-height: 100vh; width: 100%;",
+  div(class = "navbar-page-wrapper", style = "width: 100%; min-width: 100%; flex: 1 1 0;",
   navbarPage(
     title = actionLink("brand_to_about", "Meta AML Explorer", style = "color: #fff; font-size: 22px; font-weight: 700; text-decoration: none;"),
     id = "main_nav",
@@ -656,7 +671,7 @@ ui <- fluidPage(
         tags$ul(class = "about-features-list",
           tags$li(
             HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><span class=\"glyphicon glyphicon-filter\"></span></span>"),
-            tags$span(class = "about-feature-text", "Cohort selection by AML type, specific dataset, karyotype, and ELN 2022 risk.")
+            tags$span(class = "about-feature-text", "Cohort selection by AML type, dataset, karyotype, and ELN 2022 risk.")
           ),
           tags$li(
             HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"fa-solid fa-dna\"></i></span>"),
@@ -672,7 +687,7 @@ ui <- fluidPage(
           ),
           tags$li(
             HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-capsule\"></i></span>"),
-            tags$span(class = "about-feature-text", "Drug sensitivity analyses (Mutation and VAF associations for BeatAML2 data).")
+            tags$span(class = "about-feature-text", "Drug sensitivity analyses (mutation and VAF associations for BeatAML2 data).")
           )
         ),
         h2("Meta AML4 tab"),
@@ -684,9 +699,22 @@ ui <- fluidPage(
           p(style = "margin: 4px 0; line-height: 1.6;", strong("Beat AML"), " (805 patients) | ", tags$a("Tyner et al. (2022), Cancer Cell", href = "https://www.cell.com/cancer-cell/fulltext/S1535-6108(22)00312-9", target = "_blank"), " | ", tags$a("Data", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           p(style = "margin: 4px 0; line-height: 1.6; margin-bottom: 0;", strong("TCGA LAML"), " (200 patients) | ", tags$a("NEJM", href = "https://www.nejm.org/doi/full/10.1056/NEJMoa1301689", target = "_blank"), " | ", tags$a("Data", href = "https://www.cbioportal.org/", target = "_blank"))
         ),
-        h2("Caveats"),
-        p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
-        p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity.")
+        div(class = "caveats-panel",
+          h2("Caveats"),
+          p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
+          tags$details(class = "caveat-toggle",
+            tags$summary("Cancer Cell Fractions from VAF"),
+            div(class = "caveat-toggle-body",
+              p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, Beat AML ISCN karyotype strings, and TCGA gene-level GISTIC results. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity.")
+            )
+          ),
+          tags$details(class = "caveat-toggle",
+            tags$summary("ELN 2022 Risk"),
+            div(class = "caveat-toggle-body",
+              p("We implemented an automated ELN 2022 risk assignment algorithm based on ", tags$a("Diagnosis and management of AML in adults: 2022 (Blood)", href = "https://ashpublications.org/blood/article/140/12/1345/485817/Diagnosis-and-management-of-AML-in-adults-2022", target = "_blank"), ", using karyotype and mutation data when available for each cohort.")
+            )
+          )
+        )
       )
     ),
     tabPanel(HTML("<i class=\"bi bi-droplet-fill\" aria-hidden=\"true\" style=\"margin-right: 6px; color: #fff;\"></i> Meta AML4"), value = "meta_aml4",
@@ -764,12 +792,7 @@ ui <- fluidPage(
         )
       )
     )
-  ),
-  div(style = "margin-top: auto; padding: 14px 15px; border-top: 1px solid #e0e0e0; text-align: center; font-size: 0.9em; color: #666; background: #fafafa;",
-    p(style = "margin: 0;",
-      "© 2026 Brooks Benard. Licensed under ",
-      tags$a("MIT License", href = "https://opensource.org/licenses/MIT", target = "_blank"), "."
-    )
+  )
   )
   )
 )
