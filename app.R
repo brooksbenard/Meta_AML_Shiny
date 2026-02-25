@@ -526,6 +526,11 @@ ui <- fluidPage(
      .welcome-page h2:first-of-type{margin-top:0;}
      .welcome-page p{font-size:15px;line-height:1.6;}
      .welcome-page ul{font-size:15px;line-height:1.7;}
+     .welcome-page ul.about-features-list{list-style:none;padding-left:24px;}
+     .welcome-page ul.about-features-list li{display:flex;align-items:flex-start;margin-bottom:8px;}
+     .welcome-page ul.about-features-list .about-feature-icon{width:28px;min-width:28px;min-height:1.5em;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:10px;color:#374e55;}
+     .welcome-page ul.about-features-list .about-feature-icon i,.welcome-page ul.about-features-list .about-feature-icon .glyphicon{font-size:1.15em;}
+     .welcome-page ul.about-features-list .about-feature-text{line-height:1.55;flex:1;min-width:0;}
      #main_nav .nav-tabs{margin-bottom:0;border-bottom:none;}
      #main_nav .nav-tabs .nav-link{font-weight:600;color:#374e55;}
      #main_nav .nav-tabs .nav-link.active{background:#374e55;color:#fff;border-color:#374e55;}
@@ -542,12 +547,20 @@ ui <- fluidPage(
      .navbar .navbar-nav .glyphicon{margin-right:6px;font-size:0.9em;}
      .navbar .navbar-nav>li>a{border-left:1px solid rgba(255,255,255,0.35);padding-left:14px;margin-left:0;}
      .navbar .navbar-nav>li:first-child>a{border-left:none;padding-left:12px;}
+     /* Co-mutation: 2 vs 3 genes as popout buttons */
+     #comut_n .shiny-options-group{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;}
+     #comut_n .shiny-options-group label{display:inline-block;padding:10px 20px;border:2px solid #374e55;border-radius:6px;background:#fff;cursor:pointer;font-weight:600;transition:box-shadow .2s, background .2s;}
+     #comut_n .shiny-options-group label:hover{background:#e8eaed;}
+     #comut_n .shiny-options-group label:has(input:checked){background:#374e55;color:#fff;border-color:#374e55;box-shadow:0 3px 8px rgba(0,0,0,0.25);}
+     #comut_n .shiny-options-group input[type=\"radio\"]{position:absolute;opacity:0;width:0;height:0;margin:0;}
      #drug_subset_wrap .shiny-input-container{width:140px !important;min-width:140px;}
      /* Loading overlay spinner */
      #data-loading-overlay .loading-spinner{width:48px;height:48px;margin:0 auto 16px;border:4px solid #e2e8f0;border-top-color:#374e55;border-radius:50%;animation:data-load-spin 0.9s linear infinite;}
      @keyframes data-load-spin{to{transform:rotate(360deg);}}"
   ))),
   tags$head(
+    tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
+    tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$script(async = NA, src = "https://www.googletagmanager.com/gtag/js?id=G-BHRQ6LT7GG"),
     tags$script(HTML("
       window.dataLayer = window.dataLayer || [];
@@ -632,19 +645,35 @@ ui <- fluidPage(
       Shiny.addCustomMessageHandler('dataReady', function(tab) {});
     })();
   ")),
+  div(style = "display: flex; flex-direction: column; min-height: 100vh;",
   navbarPage(
     title = actionLink("brand_to_about", "Meta AML Explorer", style = "color: #fff; font-size: 22px; font-weight: 700; text-decoration: none;"),
     id = "main_nav",
     tabPanel(HTML("<span class=\"glyphicon glyphicon-info-sign\" aria-hidden=\"true\"></span> About"), value = "about",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         h2("Welcome to Meta AML Explorer"),
-        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " tab offers the following analyses:"),
-        tags$ul(
-          tags$li("Cohort selection by AML type (e.g. de novo, secondary), dataset (e.g. UK-NCRI), karyotype (NK/Complex/Other), and minimum gene frequency (% of samples)."),
-          tags$li("Single mutation associations (clinical variables, survival, hazard ratios)"),
-          tags$li("Co-mutation (heatmap, odds-ratios, Kaplan-Meier by 2–3 genes)"),
-          tags$li("Variant allele frequency (VAF) associations (clinical variables, survival, pairwise scatterplots)"),
-          tags$li("Drug Sensitivity (Mutation and VAF associations for BeatAML2 data)")
+        p("This site provides interactive exploration of mutational, clinical outcomes, and drug sensitivity data in acute myeloid leukemia (AML). Current functionality includes:"),
+        tags$ul(class = "about-features-list",
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><span class=\"glyphicon glyphicon-filter\"></span></span>"),
+            tags$span(class = "about-feature-text", "Cohort selection by AML type, specific dataset, karyotype, and ELN 2022 risk.")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"fa-solid fa-dna\"></i></span>"),
+            tags$span(class = "about-feature-text", "Single mutation associations (clinical variables, survival, hazard ratios)")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-ui-checks-grid\"></i></span>"),
+            tags$span(class = "about-feature-text", "Co-mutation correlations (oncoprint, heatmap, odds-ratios, Kaplan-Meier by 2–3 genes)")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-graph-up\"></i></span>"),
+            tags$span(class = "about-feature-text", "Variant allele frequency (VAF) associations (clinical variables, survival, pairwise scatterplots).")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-capsule\"></i></span>"),
+            tags$span(class = "about-feature-text", "Drug sensitivity analyses (Mutation and VAF associations for BeatAML2 data).")
+          )
         ),
         h2("Meta AML4 tab"),
         p("Meta AML4 merges ", strong("four of the largest molecularly profiled and clinically annotated AML datasets"), " into a single combined cohort of ", strong("~4,660 patients"), "."),
@@ -660,7 +689,7 @@ ui <- fluidPage(
         p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity.")
       )
     ),
-    tabPanel(HTML("<span class=\"glyphicon glyphicon-stats\" aria-hidden=\"true\"></span> Meta AML4"), value = "meta_aml4",
+    tabPanel(HTML("<i class=\"bi bi-droplet-fill\" aria-hidden=\"true\" style=\"margin-right: 6px; color: #fff;\"></i> Meta AML4"), value = "meta_aml4",
       conditionalPanel(
         condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
         sidebarLayout(
@@ -736,11 +765,12 @@ ui <- fluidPage(
       )
     )
   ),
-  div(style = "margin-top: 24px; padding: 14px 15px; border-top: 1px solid #e0e0e0; text-align: center; font-size: 0.9em; color: #666; background: #fafafa;",
+  div(style = "margin-top: auto; padding: 14px 15px; border-top: 1px solid #e0e0e0; text-align: center; font-size: 0.9em; color: #666; background: #fafafa;",
     p(style = "margin: 0;",
       "© 2026 Brooks Benard. Licensed under ",
       tags$a("MIT License", href = "https://opensource.org/licenses/MIT", target = "_blank"), "."
     )
+  )
   )
 )
 
@@ -762,6 +792,8 @@ server <- function(input, output, session) {
   selected_meta4_allgene_tab <- reactiveVal(NULL)
   # Preserve sub-tab inside Single Gene Associations (Clinical, Co-mutation, VAF, Drug Sensitivity)
   selected_gene_summary_sub_tab <- reactiveVal("clinical")
+  # Oncoprint: render only after user clicks "Generate oncoprint" (avoids blocking Co-mutation tab)
+  show_oncoprint <- reactiveVal(FALSE)
 
   # Precomputed Drug Sensitivity results (Mut vs WT, VAF vs AUC correlations, LOOCV) per subset to reduce memory on deploy
   precomputed_drug <- NULL
@@ -897,13 +929,15 @@ server <- function(input, output, session) {
                     column(12, wellPanel(
                       fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
                       p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+                      p(style = "margin-bottom: 10px;", "Generate the oncoprint (may take a moment):"),
+                      actionButton("generate_oncoprint_btn", "Generate oncoprint", class = "btn-primary", style = "background: #374e55; border-color: #374e55;"),
                       plotOutput("oncoprint_plot", height = 500)
                     ))
                   )
                 ),
                 tabPanel("Odds Ratio and Survival",
                   fluidRow(
-                    column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
+                    column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1)."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
                     column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
                   ),
                   fluidRow(
@@ -912,8 +946,8 @@ server <- function(input, output, session) {
                       fluidRow(
                         column(4,
                           div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                            h5(style = "margin-top: 0;", "Gene Selection"),
-                            radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                            p(style = "margin: 0 0 10px 0; font-weight: 600;", "How many co-occurring mutations do you want to compare?"),
+                            radioButtons("comut_n", label = NULL, choices = c("2 genes" = 2, "3 genes" = 3), selected = 2, inline = TRUE),
                             selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
                             selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
                             conditionalPanel(condition = "input.comut_n == 3",
@@ -1072,6 +1106,8 @@ server <- function(input, output, session) {
             column(12, wellPanel(
               h4("Oncoprint"),
               p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+              p(style = "margin-bottom: 10px;", "Generate the oncoprint (may take a moment):"),
+              actionButton("generate_oncoprint_btn", "Generate oncoprint", class = "btn-primary", style = "background: #374e55; border-color: #374e55;"),
               plotOutput("oncoprint_plot", height = 500)
             ))
           )
@@ -1097,13 +1133,15 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
                   p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+                  p(style = "margin-bottom: 10px;", "Generate the oncoprint (may take a moment):"),
+                  actionButton("generate_oncoprint_btn", "Generate oncoprint", class = "btn-primary", style = "background: #374e55; border-color: #374e55;"),
                   plotOutput("oncoprint_plot", height = 500)
                 ))
               )
             ),
             tabPanel("Odds Ratio and Survival",
               fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
+                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1)."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
                 column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
               ),
               fluidRow(
@@ -1112,8 +1150,8 @@ server <- function(input, output, session) {
                   fluidRow(
                     column(4,
                       div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                        h5(style = "margin-top: 0;", "Gene Selection"),
-                        radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                        p(style = "margin: 0 0 10px 0; font-weight: 600;", "How many co-occurring mutations do you want to compare?"),
+                        radioButtons("comut_n", label = NULL, choices = c("2 genes" = 2, "3 genes" = 3), selected = 2, inline = TRUE),
                         selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
                         selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
                         conditionalPanel(condition = "input.comut_n == 3",
@@ -1663,6 +1701,11 @@ server <- function(input, output, session) {
       top_genes <- head(top_genes, 30L)
       temp_dat <- temp_dat[top_genes, , drop = FALSE]
     }
+    # Exclude samples (columns) with no mutations in the plotted genes
+    col_has_mut <- colSums(temp_dat != "") > 0
+    samples <- samples[col_has_mut]
+    temp_dat <- temp_dat[, col_has_mut, drop = FALSE]
+    if (length(samples) == 0) return(NULL)
     clin_cols <- c("Sample", "Cohort", "Sex", "Risk", "Subset", "Time_to_OS")
     clin_cols <- clin_cols[clin_cols %in% colnames(final_data_matrix_3)]
     if (length(clin_cols) < 2) return(list(mut = NULL, temp_dat = temp_dat, anno_df = NULL, samples = samples, genes = top_genes))
@@ -1681,8 +1724,11 @@ server <- function(input, output, session) {
     list(mut = final_data_matrix_3[, c("Sample", "Gene", "variant_type"), drop = FALSE], temp_dat = temp_dat, anno_df = anno_df, samples = samples, genes = top_genes)
   })
 
+  observeEvent(input$generate_oncoprint_btn, { show_oncoprint(TRUE) }, ignoreInit = TRUE)
+
   output$oncoprint_plot <- renderPlot({
     req(input$main_nav %in% c("analyses", "meta_aml4"))
+    if (!show_oncoprint()) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Click the button above to generate the oncoprint.", size = 5) + theme_void())
     od <- oncoprint_data()
     if (is.null(od) || !is.matrix(od$temp_dat) || nrow(od$temp_dat) == 0 || ncol(od$temp_dat) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     use_meta4 <- is_meta4()
@@ -1856,7 +1902,7 @@ server <- function(input, output, session) {
     fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
     scale_y_shared <- scale_y_discrete(limits = gene_order, drop = FALSE)
     p_vaf <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
-      geom_boxplot() +
+      geom_boxplot(outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_shared +
       (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
@@ -1928,7 +1974,7 @@ server <- function(input, output, session) {
     df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
     scale_y_coh <- scale_y_discrete(limits = cohort_order, drop = FALSE)
     p_box <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
-      geom_boxplot() +
+      geom_boxplot(outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_coh +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
@@ -1966,7 +2012,7 @@ server <- function(input, output, session) {
     df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
     scale_y_cat <- scale_y_discrete(limits = cat_order, drop = FALSE)
     p_box <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
-      geom_boxplot() +
+      geom_boxplot(outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_cat +
       scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70") +
@@ -2205,7 +2251,7 @@ server <- function(input, output, session) {
       n_cat <- if ("mutation_category" %in% colnames(df)) length(unique(df$mutation_category[!is.na(df$mutation_category) & df$mutation_category != ""])) else 0L
       fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
       p <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
-        geom_boxplot() + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot(outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
         (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70") else scale_fill_discrete(guide = "none")) +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), legend.position = "top")
@@ -2248,7 +2294,7 @@ server <- function(input, output, session) {
       cat_order <- as.character(med$mutation_category[order(med$.metric)])
       df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
       p <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
-        geom_boxplot() + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot(outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
         scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
@@ -2271,7 +2317,7 @@ server <- function(input, output, session) {
       cohort_order <- as.character(med$Cohort[order(med$.metric)])
       df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
       p <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
-        geom_boxplot() + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot(outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
         scale_fill_manual(values = cohort_pal, na.value = "gray70", guide = "none") +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
@@ -2632,7 +2678,7 @@ server <- function(input, output, session) {
       ord <- hclust(dist(mat_log))$order; mat_ord <- mat_log[ord, ord]
       df_plot <- data.frame(Gene1 = rep(rownames(mat_ord), ncol(mat_ord)), Gene2 = rep(colnames(mat_ord), each = nrow(mat_ord)), log2OR = as.vector(mat_ord))
       df_plot$Gene1 <- factor(df_plot$Gene1, levels = rownames(mat_ord)); df_plot$Gene2 <- factor(df_plot$Gene2, levels = colnames(mat_ord))
-      p <- ggplot(df_plot, aes(x = Gene1, y = Gene2, fill = log2OR)) + geom_tile() + scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) + coord_fixed() + labs(x = NULL, y = NULL, fill = "log2(OR)") + theme_minimal(base_size = 14) + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+      p <- ggplot(df_plot, aes(x = Gene1, y = Gene2, fill = log2OR)) + geom_tile() + scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) + coord_fixed() + labs(x = NULL, y = NULL, fill = "log2(OR)") + theme_minimal(base_size = 14) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
       ggsave(file, plot = p, width = 10, height = 10, dpi = 150)
     }
   )
@@ -2645,7 +2691,7 @@ server <- function(input, output, session) {
       keep_genes <- filtered_genes()
       df <- if (length(keep_genes) > 0) cooc$pairs[cooc$pairs$gene1 %in% keep_genes & cooc$pairs$gene2 %in% keep_genes, , drop = FALSE] else cooc$pairs
       df$pair <- paste(df$gene1, "+", df$gene2)
-      df <- df[order(-df$n_cooccur), c("pair", "odds_ratio", "n_cooccur", "p", "q"), drop = FALSE]
+      df <- df[order(-df$n_cooccur), c("pair", "n_gene1_only", "n_gene2_only", "n_neither", "odds_ratio", "n_cooccur", "p", "q"), drop = FALSE]
       write.csv(df, file, row.names = FALSE)
     }
   )
@@ -2958,7 +3004,8 @@ server <- function(input, output, session) {
         ft <- fisher.test(tbl)
         or <- (tbl[2,2] * tbl[1,1]) / (tbl[2,1] * tbl[1,2])
         if (!is.finite(or)) or <- 0.01
-        results[[i]] <- data.frame(gene1 = g1, gene2 = g2, odds_ratio = or, n_cooccur = tbl[2,2], p = ft$p.value, stringsAsFactors = FALSE)
+        # tbl: row = g1 (1=mut), col = g2 (1=mut). [1,1]=neither, [2,1]=g1 only, [1,2]=g2 only, [2,2]=both
+        results[[i]] <- data.frame(gene1 = g1, gene2 = g2, odds_ratio = or, n_cooccur = tbl[2,2], n_gene1_only = tbl[2,1], n_gene2_only = tbl[1,2], n_neither = tbl[1,1], p = ft$p.value, stringsAsFactors = FALSE)
       }, error = function(e) NULL)
     }
     pairs_df <- do.call(rbind, results)
@@ -3003,12 +3050,12 @@ server <- function(input, output, session) {
       coord_fixed() +
       labs(x = NULL, y = NULL, fill = "log2(OR)", title = "Co-mutation Odds Ratio") +
       theme_minimal(base_size = 16) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = axis_text_size), axis.text.y = element_text(size = axis_text_size), legend.title = element_text(size = 14), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5, size = 16))
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = axis_text_size), axis.text.y = element_text(size = axis_text_size), legend.title = element_text(size = 14), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5, size = 16))
   })
 
   output$cooccurrence_table <- renderDT({
     cooc <- cooccurrence_data()
-    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
+    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), n_gene1_only = integer(), n_gene2_only = integer(), n_neither = integer(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     keep_genes <- filtered_genes()
     # Filter pairs to those where both genes pass min. gene frequency (for display only)
     if (length(keep_genes) > 0) {
@@ -3016,13 +3063,13 @@ server <- function(input, output, session) {
     } else {
       df <- cooc$pairs
     }
-    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
+    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), n_gene1_only = integer(), n_gene2_only = integer(), n_neither = integer(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     df$pair <- paste(df$gene1, "+", df$gene2)
     df$odds_ratio <- round(df$odds_ratio, 2)
     df$p <- format_pval_display(df$p)
     df$q <- format_pval_display(df$q)
     df <- df[order(-df$n_cooccur), , drop = FALSE]
-    datatable(df[, c("pair", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
+    datatable(df[, c("pair", "n_gene1_only", "n_gene2_only", "n_neither", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE, colnames = c("Gene pair", "N (gene 1 only)", "N (gene 2 only)", "N (neither)", "Odds ratio", "N (both)", "p", "q"))
   })
 
   # Figure 2: Co-occurrence & Prognosis (de novo)
