@@ -321,7 +321,8 @@ GENE_MUT_CAT_FALLBACK <- c(
   ASXL2 = "Chromatin/Cohesin", ASXL1 = "Chromatin/Cohesin", EZH2 = "Chromatin/Cohesin", BCOR = "Chromatin/Cohesin", BCORL1 = "Chromatin/Cohesin", KDM6A = "Chromatin/Cohesin",
   FBXW7 = "Tumor suppressors", TP53 = "Tumor suppressors", PHF6 = "Tumor suppressors", PIGA = "Other",
   CBL = "RTK-RAS Signaling", CBLB = "RTK-RAS Signaling", KIT = "RTK-RAS Signaling", BRAF = "RTK-RAS Signaling", NF1 = "RTK-RAS Signaling", JAK2 = "RTK-RAS Signaling", JAK3 = "RTK-RAS Signaling", MPL = "RTK-RAS Signaling", CSF3R = "RTK-RAS Signaling",
-  SETBP1 = "Transcription", IKZF1 = "Transcription", GATA2 = "Transcription", ETV6 = "Transcription", WT1 = "Transcription",
+  FLT3 = "RTK-RAS Signaling", FLT3_ITD = "RTK-RAS Signaling", FLT3_TKD = "RTK-RAS Signaling", "FLT3-ITD" = "RTK-RAS Signaling", "FLT3-TKD" = "RTK-RAS Signaling", "FLT3-Other" = "RTK-RAS Signaling",
+  SETBP1 = "Transcription", IKZF1 = "Transcription", GATA2 = "Transcription", ETV6 = "Transcription", WT1 = "Transcription", MYC = "Transcription",
   TET2 = "DNA Methylation", IDH1 = "DNA Methylation", IDH2 = "DNA Methylation", DNMT3A = "DNA Methylation",
   SRSF2 = "Splicing", U2AF1 = "Splicing", ZRSR2 = "Splicing", SF3B1 = "Splicing",
   KRAS = "RTK-RAS Signaling", NRAS = "RTK-RAS Signaling", PTPN11 = "RTK-RAS Signaling",
@@ -681,6 +682,8 @@ ui <- fluidPage(
               }), selected = "All"),
             selectInput("karyotype", "Karyotype:", 
               choices = c("All", "Complex", "Normal", "Other", "Unknown"), selected = "All"),
+            selectInput("eln_2022_risk", "ELN 2022 Risk:",
+              choices = c("All", "Favorable", "Intermediate", "Adverse", "Unknown"), selected = "All"),
             radioButtons("vaf_metric", "Allele metric:",
               choices = c("VAF" = "VAF", "CCF" = "CCF"), selected = "VAF", inline = TRUE),
             conditionalPanel(
@@ -1253,7 +1256,7 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE, ignoreInit = FALSE)
   
   # Invalidate cache when filters change (min_gene_pct does NOT affect sample filtering, so not included here)
-  observeEvent(c(input$subset, input$cohort, input$karyotype), {
+  observeEvent(c(input$subset, input$cohort, input$karyotype, input$eln_2022_risk), {
     nav <- input$main_nav
     if (nav %in% c("analyses", "meta_aml4")) {
       cached_filtered_data[[nav]] <- NULL
@@ -1303,7 +1306,7 @@ server <- function(input, output, session) {
     
     # Check cache: if same tab and same filter params, return cached data
     # Note: gene frequency filter does NOT affect which samples are included, only which genes are shown
-    current_params <- list(subset = input$subset, cohort = eff_cohort, karyotype = input$karyotype)
+    current_params <- list(subset = input$subset, cohort = eff_cohort, karyotype = input$karyotype, eln_2022_risk = input$eln_2022_risk)
     if (!is.null(cached_filtered_data[[nav]]) && 
         identical(cached_data_params[[nav]], current_params)) {
       return(cached_filtered_data[[nav]])
@@ -1316,6 +1319,11 @@ server <- function(input, output, session) {
     if (eff_cohort != "All") df <- df[as.character(df$Cohort) == eff_cohort, , drop = FALSE]
     if (!is.null(input$karyotype) && input$karyotype != "All" && "Karyotype" %in% colnames(df)) {
       df <- df[as.character(df$Karyotype) == input$karyotype, , drop = FALSE]
+    }
+    if ("ELN_2022_Risk" %in% colnames(df) && !is.null(input$eln_2022_risk) && input$eln_2022_risk != "All") {
+      eln_sel <- input$eln_2022_risk
+      keep <- (as.character(df$ELN_2022_Risk) == eln_sel) | (is.na(df$ELN_2022_Risk) & eln_sel == "Unknown")
+      df <- df[keep, , drop = FALSE]
     }
     # Do NOT filter genes here - gene frequency filter only affects which genes are shown in dropdowns/plots, not which samples are included
     df <- as.data.frame(df, stringsAsFactors = FALSE)
@@ -1451,7 +1459,7 @@ server <- function(input, output, session) {
     present <- unique(udf$Cohort)
     cohort_pal <- cohort_pal[names(cohort_pal) %in% present]
     ggplot(udf, aes(x = Cohort, y = Age, fill = Cohort)) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot() +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
       scale_y_continuous(labels = function(x) round(x)) +
       labs(x = NULL, y = "Age (years)") +
@@ -1480,7 +1488,7 @@ server <- function(input, output, session) {
       geom_bar(stat = "identity", position = "stack") +
       geom_text(aes(label = ifelse(Pct >= 2, round(Pct), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
       scale_fill_manual(values = PAL_RISK, na.value = "gray70") +
-      scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
+      scale_y_continuous(labels = function(x) round(x)) +
       labs(x = NULL, y = "Percentage of patients (%)", fill = "ELN 2022 Risk") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
@@ -1509,7 +1517,7 @@ server <- function(input, output, session) {
       geom_bar(stat = "identity", position = "stack") +
       geom_text(aes(label = ifelse(Pct >= 2, round(Pct), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
       scale_fill_manual(values = pal_sex, na.value = "gray90") +
-      scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
+      scale_y_continuous(labels = function(x) round(x)) +
       labs(x = NULL, y = "Percentage of patients (%)", fill = "Sex") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
@@ -1824,7 +1832,7 @@ server <- function(input, output, session) {
     fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
     scale_y_shared <- scale_y_discrete(limits = gene_order, drop = FALSE)
     p_vaf <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot() +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_shared +
       (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
@@ -1896,7 +1904,7 @@ server <- function(input, output, session) {
     df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
     scale_y_coh <- scale_y_discrete(limits = cohort_order, drop = FALSE)
     p_box <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot() +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_coh +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
@@ -1934,7 +1942,7 @@ server <- function(input, output, session) {
     df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
     scale_y_cat <- scale_y_discrete(limits = cat_order, drop = FALSE)
     p_box <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot() +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_cat +
       scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70") +
@@ -2173,7 +2181,7 @@ server <- function(input, output, session) {
       n_cat <- if ("mutation_category" %in% colnames(df)) length(unique(df$mutation_category[!is.na(df$mutation_category) & df$mutation_category != ""])) else 0L
       fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
       p <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
-        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot() + scale_x_continuous(limits = c(0, 100)) +
         (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70") else scale_fill_discrete(guide = "none")) +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), legend.position = "top")
@@ -2216,7 +2224,7 @@ server <- function(input, output, session) {
       cat_order <- as.character(med$mutation_category[order(med$.metric)])
       df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
       p <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
-        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot() + scale_x_continuous(limits = c(0, 100)) +
         scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
@@ -2239,7 +2247,7 @@ server <- function(input, output, session) {
       cohort_order <- as.character(med$Cohort[order(med$.metric)])
       df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
       p <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
-        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot() + scale_x_continuous(limits = c(0, 100)) +
         scale_fill_manual(values = cohort_pal, na.value = "gray70", guide = "none") +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
@@ -2734,11 +2742,13 @@ server <- function(input, output, session) {
       ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
     n_genes <- nrow(df)
     y_axis_size <- max(7, min(14, round(420 / n_genes)))
-    ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
-      geom_pointrange(size = 0.5) +
+    ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup, size = n_mut)) +
+      geom_linerange(linewidth = 0.5, show.legend = FALSE) +
+      geom_point(show.legend = TRUE) +
       geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
       coord_flip() +
       scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
+      scale_size_continuous(name = "N (mut)", range = c(2, 8)) +
       labs(x = NULL, y = "Hazard Ratio") +
       theme_minimal(base_size = 16) +
       theme(axis.text.y = element_text(size = y_axis_size), axis.text.x = element_text(size = 14), axis.title = element_text(size = 15))
@@ -2763,11 +2773,13 @@ server <- function(input, output, session) {
       df$ColorGroup <- ifelse(df$p >= 0.05, "Not significant", ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
       n_genes <- nrow(df)
       y_axis_size <- max(7, min(14, round(420 / n_genes)))
-      p <- ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
-        geom_pointrange(size = 0.5) +
+      p <- ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup, size = n_mut)) +
+        geom_linerange(linewidth = 0.5, show.legend = FALSE) +
+        geom_point(show.legend = TRUE) +
         geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
         coord_flip() +
         scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
+        scale_size_continuous(name = "N (mut)", range = c(2, 8)) +
         labs(x = NULL, y = "Hazard Ratio") +
         theme_minimal(base_size = 16) +
         theme(axis.text.y = element_text(size = y_axis_size), axis.text.x = element_text(size = 14), axis.title = element_text(size = 15))
