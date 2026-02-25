@@ -657,12 +657,7 @@ ui <- fluidPage(
         ),
         h2("Caveats"),
         p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
-        p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity."),
-        hr(),
-        p(style = "font-size: 0.9em; color: #666;",
-          "© ", format(Sys.Date(), "%Y"), " Brooks Benard. Licensed under ",
-          tags$a("MIT License", href = "https://opensource.org/licenses/MIT", target = "_blank"), "."
-        )
+        p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity.")
       )
     ),
     tabPanel(HTML("<span class=\"glyphicon glyphicon-stats\" aria-hidden=\"true\"></span> Meta AML4"), value = "meta_aml4",
@@ -728,7 +723,7 @@ ui <- fluidPage(
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         div(style = "background: #f8f9fa; border-left: 4px solid #374e55; border-radius: 6px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);",
           p(style = "margin: 0 0 18px 0; color: #444; line-height: 1.6; font-size: 15px;",
-            "I am the sole developer and maintainer of this site. Please reach out if you encounter any issues with functionality, find any data inaccuracies, or have suggestions or requests for added functionality."),
+            "I am the sole developer and maintainer of this site. Please reach out if you encounter any issues with the site, find any data inaccuracies, or have suggestions or requests for added functionality."),
           div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 0;",
             tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
             div(
@@ -739,6 +734,12 @@ ui <- fluidPage(
           )
         )
       )
+    )
+  ),
+  div(style = "margin-top: 24px; padding: 14px 15px; border-top: 1px solid #e0e0e0; text-align: center; font-size: 0.9em; color: #666; background: #fafafa;",
+    p(style = "margin: 0;",
+      "© 2026 Brooks Benard. Licensed under ",
+      tags$a("MIT License", href = "https://opensource.org/licenses/MIT", target = "_blank"), "."
     )
   )
 )
