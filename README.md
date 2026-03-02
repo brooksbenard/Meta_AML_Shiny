@@ -1,5 +1,7 @@
 # Meta AML Explorer (deploy bundle)
 
+![Meta AML schematic](www/Meta_AML_schematic.png)
+
 ## Run the app
 
 - **RStudio:** Open `app.R` and click **Run App**.
