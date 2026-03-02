@@ -699,6 +699,9 @@ ui <- fluidPage(
           p(style = "margin: 4px 0; line-height: 1.6;", strong("Beat AML"), " (805 patients) | ", tags$a("Tyner et al. (2022), Cancer Cell", href = "https://www.cell.com/cancer-cell/fulltext/S1535-6108(22)00312-9", target = "_blank"), " | ", tags$a("Data", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           p(style = "margin: 4px 0; line-height: 1.6; margin-bottom: 0;", strong("TCGA LAML"), " (200 patients) | ", tags$a("NEJM", href = "https://www.nejm.org/doi/full/10.1056/NEJMoa1301689", target = "_blank"), " | ", tags$a("Data", href = "https://www.cbioportal.org/", target = "_blank"))
         ),
+        div(style = "margin: 1.5em 0;",
+          tags$img(src = "Meta_AML_schematic.png", alt = "Meta AML schematic", style = "width: 100%; max-width: 800px; height: auto; border: 1px solid #dee2e6; border-radius: 6px;")
+        ),
         div(class = "caveats-panel",
           h2("Caveats"),
           p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
@@ -925,6 +928,9 @@ server <- function(input, output, session) {
           ),
           fluidRow(
             column(12, wellPanel(h4("Recurrently Mutated Genes"), plotOutput("overview_gene_freq_plot", height = 450)))
+          ),
+          fluidRow(
+            column(12, wellPanel(h4("UK-NCRI copy number (gains/deletions)"), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Arm-level gains and deletions from UK-NCRI cytogenetics; samples with no alterations excluded. BrBG: green = gain, brown = deletion. Stacked bars above each arm show proportion of patients with gain/loss/normal."), plotOutput("overview_cn_heatmap_plot", height = 600)))
           )
         ),
         tabPanel("All Gene Associations",
@@ -1124,6 +1130,9 @@ server <- function(input, output, session) {
           ),
           fluidRow(
             column(12, wellPanel(h4("Recurrently Mutated Genes"), plotOutput("overview_gene_freq_plot", height = 450)))
+          ),
+          fluidRow(
+            column(12, wellPanel(h4("UK-NCRI copy number (gains/deletions)"), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Arm-level gains and deletions from UK-NCRI cytogenetics; samples with no alterations excluded. BrBG: green = gain, brown = deletion. Stacked bars above each arm show proportion of patients with gain/loss/normal."), plotOutput("overview_cn_heatmap_plot", height = 600)))
           ),
           fluidRow(
             column(12, wellPanel(
@@ -1640,6 +1649,127 @@ server <- function(input, output, session) {
       theme_minimal(base_size = 16) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 13), axis.text.y = element_text(size = 14), axis.title = element_text(size = 15),
             legend.text = element_text(size = 13), legend.title = element_text(size = 14))
+  })
+
+  # UK-NCRI copy number matrix from cytogenetics (add_/del_) for heatmap
+  uk_ncri_cn_matrix <- reactive({
+    path <- file.path(getwd(), "UK_NCRI_data", "UK_NCRI_Cytogenetics_data.csv")
+    if (!file.exists(path)) return(NULL)
+    raw <- utils::read.csv(path, skip = 1, stringsAsFactors = FALSE)
+    add_cols <- grep("^add_", names(raw), value = TRUE)
+    del_cols <- grep("^del_", names(raw), value = TRUE)
+    if (length(add_cols) == 0 && length(del_cols) == 0) return(NULL)
+    # Arm order: 1p, 1q, 2p, 2q, ..., 22p, 22q, Xp, Xq
+    chr_order <- function(arm) {
+      arm <- tolower(arm)
+      chr <- sub("[pq]$", "", arm)
+      arm_ <- sub("^[0-9]+|^x", "", arm)
+      n <- if (chr == "x") 23 else as.integer(chr)
+      list(n = n, p = if (arm_ == "p") 1 else 2)
+    }
+    all_arms <- unique(c(gsub("^add_", "", add_cols), gsub("^del_", "", del_cols)))
+    all_arms <- all_arms[order(vapply(all_arms, function(a) {
+      o <- chr_order(a)
+      o$n * 2 + o$p
+    }, 0))]
+    id_col <- names(raw)[1]
+    sample_ids <- as.character(raw[[id_col]])
+    mat <- matrix(0, nrow = nrow(raw), ncol = length(all_arms),
+                 dimnames = list(sample_ids, all_arms))
+    for (arm in all_arms) {
+      add_nm <- paste0("add_", arm)
+      del_nm <- paste0("del_", arm)
+      add_val <- if (add_nm %in% names(raw)) as.numeric(raw[[add_nm]]) else rep(0, nrow(raw))
+      del_val <- if (del_nm %in% names(raw)) as.numeric(raw[[del_nm]]) else rep(0, nrow(raw))
+      add_val[is.na(add_val)] <- 0
+      del_val[is.na(del_val)] <- 0
+      mat[, arm] <- ifelse(add_val > 0, 1, ifelse(del_val > 0, -1, 0))
+    }
+    # Proportions per arm (gain / loss / normal) from full cohort
+    n <- nrow(mat)
+    prop_bar <- matrix(0, nrow = 3, ncol = length(all_arms),
+                      dimnames = list(c("gain", "loss", "normal"), all_arms))
+    for (arm in all_arms) {
+      prop_bar["gain", arm]  <- sum(mat[, arm] == 1) / n
+      prop_bar["loss", arm]  <- sum(mat[, arm] == -1) / n
+      prop_bar["normal", arm] <- sum(mat[, arm] == 0) / n
+    }
+    # Remove rows (samples) with no gains or losses
+    has_alt <- rowSums(mat != 0) > 0
+    mat <- mat[has_alt, , drop = FALSE]
+    list(matrix = mat, arms = all_arms, prop_bar = prop_bar)
+  })
+
+  output$overview_cn_heatmap_plot <- renderPlot({
+    obj <- uk_ncri_cn_matrix()
+    if (is.null(obj)) {
+      plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+      text(0.5, 0.5, "UK-NCRI cytogenetics file not found.\nAdd UK_NCRI_data/UK_NCRI_Cytogenetics_data.csv", cex = 1.2)
+      return(invisible(NULL))
+    }
+    mat <- obj$matrix
+    arms <- obj$arms
+    prop_bar <- obj$prop_bar
+    if (nrow(mat) < 1 || ncol(mat) < 1) {
+      plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+      text(0.5, 0.5, "No UK-NCRI samples with gains or deletions.", cex = 1.2)
+      return(invisible(NULL))
+    }
+    # 11-class BrBG: brown = deletion, white = neutral, green = gain
+    brbg <- RColorBrewer::brewer.pal(11, "BrBG")
+    col_gain <- brbg[11]
+    col_neutral <- brbg[6]
+    col_del <- brbg[1]
+    col_fun <- if (has_ComplexHeatmap && "colorRamp2" %in% ls(getNamespace("ComplexHeatmap"))) {
+      ComplexHeatmap::colorRamp2(c(-1, 0, 1), c(col_del, col_neutral, col_gain))
+    } else {
+      NULL
+    }
+    if (has_ComplexHeatmap && !is.null(col_fun)) {
+      # Stacked barplot above each arm: gain (green), loss (brown), normal (gray)
+      ha <- ComplexHeatmap::HeatmapAnnotation(
+        "Proportion" = ComplexHeatmap::anno_barplot(
+          t(prop_bar),
+          gp = grid::gpar(fill = c(col_gain, col_del, "#E0E0E0")),
+          height = grid::unit(2, "cm")
+        ),
+        show_annotation_name = TRUE,
+        annotation_name_side = "left"
+      )
+      ComplexHeatmap::Heatmap(
+        mat,
+        name = "CN",
+        col = col_fun,
+        cluster_rows = nrow(mat) > 1,
+        cluster_columns = TRUE,
+        row_dend_width = grid::unit(30, "mm"),
+        column_dend_height = grid::unit(20, "mm"),
+        column_labels = arms,
+        column_names_rot = 45,
+        column_names_side = "bottom",
+        row_names_gp = grid::gpar(fontsize = 6),
+        column_names_gp = grid::gpar(fontsize = 9),
+        heatmap_legend_param = list(
+          title = "Copy number",
+          at = c(-1, 0, 1),
+          labels = c("Deletion", "Neutral", "Gain")
+        ),
+        top_annotation = ha,
+        border = TRUE
+      )
+    } else {
+      # Fallback: base heatmap with row and column clustering
+      hc_r <- if (nrow(mat) > 1) hclust(dist(mat, method = "euclidean"), method = "complete") else list(order = seq_len(nrow(mat)))
+      hc_c <- hclust(dist(t(mat), method = "euclidean"), method = "complete")
+      mat_ord <- mat[hc_r$order, hc_c$order, drop = FALSE]
+      arms_ord <- arms[hc_c$order]
+      graphics::image(1:ncol(mat_ord), 1:nrow(mat_ord), t(mat_ord),
+                     col = c(col_del, col_neutral, col_gain),
+                     breaks = c(-1.5, -0.5, 0.5, 1.5),
+                     xaxt = "n", yaxt = "n", xlab = "", ylab = "Sample (clustered)")
+      axis(1, at = seq_len(ncol(mat_ord)), labels = arms_ord, las = 2, cex.axis = 0.8)
+      legend("topright", fill = c(col_del, col_neutral, col_gain), legend = c("Deletion", "Neutral", "Gain"), bty = "n")
+    }
   })
 
   oncoprint_data <- reactive({
