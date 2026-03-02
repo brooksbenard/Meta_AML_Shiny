@@ -1461,10 +1461,33 @@ cat("  CCF median: ", round(median(all_data$CCF, na.rm = TRUE), 1), "%, mean: ",
 # =============================================================================
 # 9. Save as AML_Meta_Cohort_v2
 # =============================================================================
+# Enrich with ELN_2022_Risk and Karyotype from Meta_AML_aggregated_clinical.tsv (built by build_aggregated_clinical.R)
+clin_agg_path <- file.path(getwd(), "Meta_AML_aggregated_clinical.tsv")
+if (file.exists(clin_agg_path)) {
+  clin_agg <- read.delim(clin_agg_path, stringsAsFactors = FALSE, check.names = FALSE)
+  if ("Patient_ID" %in% colnames(clin_agg) && "ELN_2022_Risk" %in% colnames(clin_agg)) {
+    m <- match(all_data$Sample, as.character(clin_agg$Patient_ID))
+    all_data$ELN_2022_Risk <- clin_agg$ELN_2022_Risk[m]
+    n_eln <- sum(!is.na(all_data$ELN_2022_Risk) & all_data$ELN_2022_Risk %in% c("Favorable", "Intermediate", "Adverse"))
+    cat("  Enriched ELN_2022_Risk from Meta_AML_aggregated_clinical.tsv: ", n_eln, " samples with Favorable/Intermediate/Adverse\n", sep = "")
+  }
+  if ("Patient_ID" %in% colnames(clin_agg) && "Karyotype" %in% colnames(clin_agg)) {
+    if (!exists("m")) m <- match(all_data$Sample, as.character(clin_agg$Patient_ID))
+    ky_clin <- clin_agg$Karyotype[m]
+    use_ky <- !is.na(ky_clin) & as.character(ky_clin) != ""
+    all_data$Karyotype[use_ky] <- as.character(ky_clin[use_ky])
+    cat("  Enriched Karyotype from Meta_AML_aggregated_clinical.tsv: ", sum(use_ky), " samples updated\n", sep = "")
+  }
+} else {
+  all_data$ELN_2022_Risk <- NA_character_
+  cat("  Meta_AML_aggregated_clinical.tsv not found; run build_aggregated_clinical.R first for ELN_2022_Risk and updated Karyotype\n")
+}
+if (!"ELN_2022_Risk" %in% colnames(all_data)) all_data$ELN_2022_Risk <- NA_character_
+
 cat("\nSaving AML_Meta_Cohort_v2...\n")
 AML_Meta_Cohort_v2 <- all_data[, c("Sample", "Gene", "VAF", "CCF", "CN_at_locus", "Cohort", "Subset", "Time_to_OS", "Censor", 
                                     "variant_type", "mutation_category", "AA_change", "Gene_Group",
-                                    "Age", "Sex", "Risk", "Karyotype",
+                                    "Age", "Sex", "Risk", "Karyotype", "ELN_2022_Risk",
                                     "WBC", "Hemoglobin", "Platelet", "BM_blast_percent", "PB_blast_percent", "LDH")]
 # Ensure TCGA VAF is not all NA in final cohort
 tcga_in_cohort <- AML_Meta_Cohort_v2$Cohort == "TCGA"
@@ -1482,7 +1505,7 @@ cat("  Cohorts: ", paste(unique(AML_Meta_Cohort_v2$Cohort), collapse = ", "), "\
 # Final validation summary
 cat("\n=== Validation Summary ===\n")
 cat("Survival times: All in days (TCGA converted from months, Beat AML/AML-SG already in days)\n")
-cat("ELN Risk: Standardized to Favorable/Intermediate/Adverse/Unknown\n")
+cat("ELN Risk: Risk = ELN 2017 per cohort; ELN_2022_Risk and Karyotype from Meta_AML_aggregated_clinical.tsv when available\n")
 cat("Beat AML consensus mutations: FLT3-ITD, NPM1, RUNX1, ASXL1, TP53 added from clinical file\n")
 cat("Mutation frequencies: Checked across cohorts (see above)\n")
 cat("Clinical variables: WBC, Hemoglobin, Platelet, BM_blast_percent, PB_blast_percent, LDH captured where available per cohort\n")

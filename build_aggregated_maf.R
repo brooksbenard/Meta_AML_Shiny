@@ -15,7 +15,8 @@ MAF_COLS <- c(
   "Hugo_Symbol", "Entrez_Gene_Id", "Chromosome", "Start_Position", "End_Position",
   "Variant_Classification", "Variant_Type", "Reference_Allele", "Tumor_Seq_Allele1", "Tumor_Seq_Allele2",
   "Tumor_Sample_Barcode", "HGVSp_Short", "AA_change", "VAF", "Cohort",
-  "Variant_Caller", "cds_change", "Consequence", "source_file"
+  "Variant_Caller", "cds_change", "Consequence", "source_file",
+  "Mut_Included"
 )
 
 # Helper: normalize variant_classification -> Variant_Type (app logic)
@@ -43,6 +44,27 @@ apply_npm1_frameshift <- function(df) {
   df
 }
 
+# Parse protein (AA) position for dedup: from "315/2002" or "p.R882H" -> 315, 882
+parse_aa_position <- function(protein_position, hgvsp_short) {
+  n <- if (!missing(protein_position)) length(protein_position) else length(hgvsp_short)
+  out <- rep(NA_integer_, n)
+  if (!missing(protein_position) && !is.null(protein_position)) {
+    pp <- as.character(protein_position)
+    pp[is.na(pp)] <- ""
+    first_num <- suppressWarnings(as.integer(sub("^([0-9]+).*", "\\1", pp)))
+    out[nzchar(pp)] <- first_num[nzchar(pp)]
+  }
+  if (!missing(hgvsp_short) && !is.null(hgvsp_short)) {
+    hgv <- as.character(hgvsp_short)
+    hgv[is.na(hgv)] <- ""
+    # p.R882H, p.Q317Rfs*30, p.Val1371SerfsTer77 -> 882, 317, 1371
+    extracted <- suppressWarnings(as.integer(sub(".*p\\.[A-Za-z*]?([0-9]+).*", "\\1", hgv)))
+    use <- is.na(out) & nzchar(hgv) & !is.na(extracted)
+    if (length(extracted) == length(out)) out[use] <- extracted[use]
+  }
+  out
+}
+
 # ---------- 1. TCGA LAML ----------
 tcga_path <- "laml_tcga/data_mutations.txt"
 tcga <- NULL
@@ -66,6 +88,7 @@ if (file.exists(tcga_path)) {
   tcga$Consequence <- if ("Consequence" %in% colnames(tcga)) tcga$Consequence else tcga$Variant_Classification
   tcga$source_file <- "laml_tcga/data_mutations.txt"
   tcga <- apply_npm1_frameshift(tcga)
+  tcga$Mut_Included <- "Retained"
 }
 
 # ---------- 2. Beat AML2 ----------
@@ -97,6 +120,26 @@ if (file.exists(beat_path)) {
   beat$Entrez_Gene_Id <- NA_integer_
   beat$source_file <- "beataml2_data/mutations.txt"
   beat <- apply_npm1_frameshift(beat)
+
+  # VarScan vs Mutect: label Mut_Included = "Retained" (would keep) or "Excluded" (would drop); keep all rows
+  if ("genotyper" %in% colnames(beat) && any(tolower(beat$genotyper) %in% c("varscan", "mutect"))) {
+    pp_col <- if ("protein_position" %in% colnames(beat)) beat$protein_position else NULL
+    hgv_col <- if ("hgvsp_short" %in% colnames(beat)) beat$hgvsp_short else beat$HGVSp_Short
+    beat$._aa_pos <- parse_aa_position(pp_col, hgv_col)
+    beat$._site_key <- with(beat, paste(
+      Tumor_Sample_Barcode, Hugo_Symbol,
+      ifelse(is.na(._aa_pos), paste(Chromosome, Start_Position, Reference_Allele, Tumor_Seq_Allele1), ._aa_pos),
+      sep = "|"
+    ))
+    vaf_num <- as.numeric(beat$VAF)
+    beat <- beat[order(beat$._site_key, -abs(vaf_num), na.last = TRUE), ]
+    keep_idx <- !duplicated(beat$._site_key, fromLast = FALSE)
+    beat$Mut_Included <- ifelse(keep_idx, "Retained", "Excluded")
+    beat$._aa_pos <- NULL
+    beat$._site_key <- NULL
+  } else {
+    beat$Mut_Included <- "Retained"
+  }
 }
 
 # ---------- 3. AML-SG Genetic ----------
@@ -124,6 +167,7 @@ if (file.exists(amlsg_path)) {
   amlsg$Entrez_Gene_Id <- NA_integer_
   amlsg$source_file <- "amlsg_data/AMLSG_Genetic.txt"
   amlsg <- apply_npm1_frameshift(amlsg)
+  amlsg$Mut_Included <- "Retained"
 }
 
 # ---------- 3b. AML-SG FLT3 ITD (add rows for samples with ITD not in Genetic) ----------
@@ -138,6 +182,7 @@ if (file.exists(flt3itd_path) && !is.null(amlsg) && nrow(amlsg) > 0) {
     if (any(need_rows)) {
       add <- amlsg[1, , drop = FALSE][rep(1, sum(need_rows)), , drop = FALSE]
       add[] <- NA
+      add$Mut_Included <- "Retained"
       add$Hugo_Symbol <- "FLT3-ITD"
       add$Chromosome <- "13"
       add$Variant_Classification <- "Internal_Tandem_Duplication"
@@ -184,6 +229,7 @@ if (file.exists(ncri_path)) {
   ncri$Entrez_Gene_Id <- NA_integer_
   ncri$source_file <- "UK_NCRI_data/UK_NCRI_Mutations_data.csv"
   ncri <- apply_npm1_frameshift(ncri)
+  ncri$Mut_Included <- "Retained"
 }
 
 # ---------- Bind and select MAF columns ----------

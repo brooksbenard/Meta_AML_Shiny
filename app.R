@@ -274,11 +274,19 @@ normalize_AML_Meta_Cohort <- function(d) {
   } else if ("ELN" %in% colnames(d)) {
     eln <- as.character(d$ELN)
     d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
+  } else if ("ELN_2017_Risk" %in% colnames(d)) {
+    eln <- as.character(d$ELN_2017_Risk)
+    d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
   } else if ("ELN_2017" %in% colnames(d)) {
     eln <- as.character(d$ELN_2017)
     d$Risk <- ifelse(eln %in% c("Adverse", "Intermediate", "Favorable"), eln, "Unknown")
   } else if ("Karyotype" %in% colnames(d)) d$Risk <- as.character(d$Karyotype)
   else d$Risk <- NA_character_
+  # Prefer ELN 2022 when present (from Meta_AML_aggregated_clinical / AML_Meta_Cohort_v2)
+  if ("ELN_2022_Risk" %in% colnames(d) && any(!is.na(d$ELN_2022_Risk) & as.character(d$ELN_2022_Risk) %in% c("Favorable", "Intermediate", "Adverse"))) {
+    eln22 <- as.character(d$ELN_2022_Risk)
+    d$Risk <- ifelse(eln22 %in% c("Favorable", "Intermediate", "Adverse"), eln22, d$Risk)
+  }
   # Clinical vars: WBC, Hemoglobin, Platelet, LDH, BM_blast_percent, PB_blast_percent
   if ("WBC" %in% colnames(d)) d$WBC <- as.numeric(d$WBC)
   if ("hemoglobin" %in% colnames(d)) d$Hemoglobin <- as.numeric(d$hemoglobin)
@@ -295,7 +303,7 @@ normalize_AML_Meta_Cohort <- function(d) {
   if ("CCF" %in% colnames(d)) d$CCF <- as.numeric(d$CCF)
   if ("CN_at_locus" %in% colnames(d)) d$CN_at_locus <- as.integer(d$CN_at_locus)
   want <- c("Sample", "Gene", "VAF", "CCF", "CN_at_locus", "Cohort", "Subset", "Time_to_OS", "Censor", "variant_type",
-    "mutation_category", "AA_change", "HGVSp_Short", "Protein_Change", "protein", "Gene_Group", "Age", "Sex", "Risk", "Karyotype", "WBC", "Hemoglobin", "Platelet", "LDH", "BM_blast_percent", "PB_blast_percent")
+    "mutation_category", "AA_change", "HGVSp_Short", "Protein_Change", "protein", "Gene_Group", "Age", "Sex", "Risk", "Karyotype", "WBC", "Hemoglobin", "Platelet", "LDH", "BM_blast_percent", "PB_blast_percent", "ELN_2022_Risk")
   keep <- want[want %in% colnames(d)]
   d <- d[, keep, drop = FALSE]
   # For associations and gene selection: use Gene_Group when set, otherwise Gene (so NA Gene_Group -> show Gene)
@@ -313,7 +321,8 @@ GENE_MUT_CAT_FALLBACK <- c(
   ASXL2 = "Chromatin/Cohesin", ASXL1 = "Chromatin/Cohesin", EZH2 = "Chromatin/Cohesin", BCOR = "Chromatin/Cohesin", BCORL1 = "Chromatin/Cohesin", KDM6A = "Chromatin/Cohesin",
   FBXW7 = "Tumor suppressors", TP53 = "Tumor suppressors", PHF6 = "Tumor suppressors", PIGA = "Other",
   CBL = "RTK-RAS Signaling", CBLB = "RTK-RAS Signaling", KIT = "RTK-RAS Signaling", BRAF = "RTK-RAS Signaling", NF1 = "RTK-RAS Signaling", JAK2 = "RTK-RAS Signaling", JAK3 = "RTK-RAS Signaling", MPL = "RTK-RAS Signaling", CSF3R = "RTK-RAS Signaling",
-  SETBP1 = "Transcription", IKZF1 = "Transcription", GATA2 = "Transcription", ETV6 = "Transcription", WT1 = "Transcription",
+  FLT3 = "RTK-RAS Signaling", FLT3_ITD = "RTK-RAS Signaling", FLT3_TKD = "RTK-RAS Signaling", "FLT3-ITD" = "RTK-RAS Signaling", "FLT3-TKD" = "RTK-RAS Signaling", "FLT3-Other" = "RTK-RAS Signaling",
+  SETBP1 = "Transcription", IKZF1 = "Transcription", GATA2 = "Transcription", ETV6 = "Transcription", WT1 = "Transcription", MYC = "Transcription",
   TET2 = "DNA Methylation", IDH1 = "DNA Methylation", IDH2 = "DNA Methylation", DNMT3A = "DNA Methylation",
   SRSF2 = "Splicing", U2AF1 = "Splicing", ZRSR2 = "Splicing", SF3B1 = "Splicing",
   KRAS = "RTK-RAS Signaling", NRAS = "RTK-RAS Signaling", PTPN11 = "RTK-RAS Signaling",
@@ -517,15 +526,55 @@ ui <- fluidPage(
      .welcome-page h2:first-of-type{margin-top:0;}
      .welcome-page p{font-size:15px;line-height:1.6;}
      .welcome-page ul{font-size:15px;line-height:1.7;}
-     #main_nav .nav-tabs{margin-bottom:0;border-bottom:2px solid #374e55;}
+     .welcome-page ul.about-features-list{list-style:none;padding-left:24px;margin:0 0 0 0;}
+     .welcome-page ul.about-features-list li{display:flex;align-items:center;margin-bottom:12px;}
+     .welcome-page ul.about-features-list li:last-child{margin-bottom:0;}
+     .welcome-page ul.about-features-list .about-feature-icon{width:28px;min-width:28px;height:1.5em;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:12px;color:#374e55;}
+     .welcome-page ul.about-features-list .about-feature-icon i,.welcome-page ul.about-features-list .about-feature-icon .glyphicon{font-size:1.15em;}
+     .welcome-page ul.about-features-list .about-feature-text{line-height:1.5;flex:1;min-width:0;margin:0;padding:0;}
+     .welcome-page .caveat-toggle{margin-top:12px;border:1px solid #dee2e6;border-radius:6px;overflow:hidden;}
+     .welcome-page .caveat-toggle summary{padding:10px 14px;background:#f8f9fa;cursor:pointer;font-weight:600;color:#374e55;list-style:none;display:flex;align-items:center;gap:8px;}
+     .welcome-page .caveat-toggle summary::-webkit-details-marker{display:none;}
+     .welcome-page .caveat-toggle summary::before{content:'\u25b8';font-size:0.75em;transition:transform 0.2s;}
+     .welcome-page .caveat-toggle[open] summary::before{transform:rotate(90deg);}
+     .welcome-page .caveat-toggle .caveat-toggle-body{padding:12px 14px 14px;background:#fff;border-top:1px solid #dee2e6;}
+     .welcome-page .caveat-toggle + .caveat-toggle{margin-top:8px;}
+     .welcome-page .caveats-panel{background:#f5f6f8;padding:18px 20px;border-radius:8px;margin-top:1.2em;border:1px solid #e8eaed;}
+     .welcome-page .caveats-panel h2{font-size:1.25em;margin-top:0;color:#374e55;}
+     #main_nav .nav-tabs{margin-bottom:0;border-bottom:none;}
      #main_nav .nav-tabs .nav-link{font-weight:600;color:#374e55;}
      #main_nav .nav-tabs .nav-link.active{background:#374e55;color:#fff;border-color:#374e55;}
+     .navbar-page-wrapper .container-fluid{width:100%;max-width:100%;}
+     .navbar-page-wrapper .tab-content{width:100%;}
+     .navbar-page-wrapper .tab-pane{width:100%;}
+     .navbar-page-wrapper .row{margin-left:0;margin-right:0;}
+     /* Navbar header: title + tabs in one bar */
+     .navbar{background:#374e55 !important;border-radius:0;border:none;margin-bottom:15px;}
+     .navbar .navbar-brand{color:#fff !important;font-size:22px;font-weight:700;}
+     .navbar .navbar-nav>li>a{color:#fff !important;font-weight:600;}
+     .navbar .navbar-nav>li>a:hover{background:rgba(255,255,255,0.12) !important;color:#fff;}
+     .navbar .navbar-nav>.active>a,.navbar .navbar-nav>.active>a:hover,.navbar .navbar-nav>.active>a:focus{background:rgba(255,255,255,0.2) !important;color:#fff !important;border:none;}
+     .navbar .navbar-collapse{border:none;}
+     .navbar .navbar-brand a:hover{background:transparent !important;color:#fff !important;}
+     .navbar .container-fluid{display:flex;justify-content:space-between;align-items:center;}
+     .navbar .navbar-nav{margin-left:auto;margin-right:0;}
+     .navbar .navbar-nav .glyphicon{margin-right:6px;font-size:0.9em;}
+     .navbar .navbar-nav>li>a{border-left:1px solid rgba(255,255,255,0.35);padding-left:14px;margin-left:0;}
+     .navbar .navbar-nav>li:first-child>a{border-left:none;padding-left:12px;}
+     /* Co-mutation: 2 vs 3 genes as popout buttons */
+     #comut_n .shiny-options-group{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;}
+     #comut_n .shiny-options-group label{display:inline-block;padding:10px 20px;border:2px solid #374e55;border-radius:6px;background:#fff;cursor:pointer;font-weight:600;transition:box-shadow .2s, background .2s;}
+     #comut_n .shiny-options-group label:hover{background:#e8eaed;}
+     #comut_n .shiny-options-group label:has(input:checked){background:#374e55;color:#fff;border-color:#374e55;box-shadow:0 3px 8px rgba(0,0,0,0.25);}
+     #comut_n .shiny-options-group input[type=\"radio\"]{position:absolute;opacity:0;width:0;height:0;margin:0;}
      #drug_subset_wrap .shiny-input-container{width:140px !important;min-width:140px;}
      /* Loading overlay spinner */
      #data-loading-overlay .loading-spinner{width:48px;height:48px;margin:0 auto 16px;border:4px solid #e2e8f0;border-top-color:#374e55;border-radius:50%;animation:data-load-spin 0.9s linear infinite;}
      @keyframes data-load-spin{to{transform:rotate(360deg);}}"
   ))),
   tags$head(
+    tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
+    tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$script(async = NA, src = "https://www.googletagmanager.com/gtag/js?id=G-BHRQ6LT7GG"),
     tags$script(HTML("
       window.dataLayer = window.dataLayer || [];
@@ -610,21 +659,36 @@ ui <- fluidPage(
       Shiny.addCustomMessageHandler('dataReady', function(tab) {});
     })();
   ")),
-  div(class = "app-banner",
-    div(class = "banner-title", "Meta AML Explorer")
-  ),
-  tabsetPanel(
+  div(style = "display: flex; flex-direction: column; min-height: 100vh; width: 100%;",
+  div(class = "navbar-page-wrapper", style = "width: 100%; min-width: 100%; flex: 1 1 0;",
+  navbarPage(
+    title = actionLink("brand_to_about", "Meta AML Explorer", style = "color: #fff; font-size: 22px; font-weight: 700; text-decoration: none;"),
     id = "main_nav",
-    tabPanel("About", value = "about",
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-info-sign\" aria-hidden=\"true\"></span> About"), value = "about",
       div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
         h2("Welcome to Meta AML Explorer"),
-        p("This site provides interactive exploration of acute myeloid leukemia (AML) mutational and clinical outcomes data. The ", strong("Meta AML4"), " tab offers the following analyses:"),
-        tags$ul(
-          tags$li("Cohort selection by AML type (e.g. de novo, secondary), dataset (e.g. UK-NCRI), karyotype (NK/Complex/Other), and minimum gene frequency (% of samples)."),
-          tags$li("Single mutation associations (clinical variables, survival, hazard ratios)"),
-          tags$li("Co-mutation (heatmap, odds-ratios, Kaplan-Meier by 2–3 genes)"),
-          tags$li("Variant allele frequency (VAF) associations (clinical variables, survival, pairwise scatterplots)"),
-          tags$li("Drug Sensitivity (Mutation and VAF associations for BeatAML2 data)")
+        p("This site provides interactive exploration of mutational, clinical outcomes, and drug sensitivity data in acute myeloid leukemia (AML). Current functionality includes:"),
+        tags$ul(class = "about-features-list",
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><span class=\"glyphicon glyphicon-filter\"></span></span>"),
+            tags$span(class = "about-feature-text", "Cohort selection by AML type, dataset, karyotype, and ELN 2022 risk.")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"fa-solid fa-dna\"></i></span>"),
+            tags$span(class = "about-feature-text", "Single mutation associations (clinical variables, survival, hazard ratios)")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-ui-checks-grid\"></i></span>"),
+            tags$span(class = "about-feature-text", "Co-mutation correlations (oncoprint, heatmap, odds-ratios, Kaplan-Meier by 2–3 genes)")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-graph-up\"></i></span>"),
+            tags$span(class = "about-feature-text", "Variant allele frequency (VAF) associations (clinical variables, survival, pairwise scatterplots).")
+          ),
+          tags$li(
+            HTML("<span class=\"about-feature-icon\" aria-hidden=\"true\"><i class=\"bi bi-capsule\"></i></span>"),
+            tags$span(class = "about-feature-text", "Drug sensitivity analyses (mutation and VAF associations for BeatAML2 data).")
+          )
         ),
         h2("Meta AML4 tab"),
         p("Meta AML4 merges ", strong("four of the largest molecularly profiled and clinically annotated AML datasets"), " into a single combined cohort of ", strong("~4,660 patients"), "."),
@@ -635,26 +699,28 @@ ui <- fluidPage(
           p(style = "margin: 4px 0; line-height: 1.6;", strong("Beat AML"), " (805 patients) | ", tags$a("Tyner et al. (2022), Cancer Cell", href = "https://www.cell.com/cancer-cell/fulltext/S1535-6108(22)00312-9", target = "_blank"), " | ", tags$a("Data", href = "https://biodev.github.io/BeatAML2/", target = "_blank")),
           p(style = "margin: 4px 0; line-height: 1.6; margin-bottom: 0;", strong("TCGA LAML"), " (200 patients) | ", tags$a("NEJM", href = "https://www.nejm.org/doi/full/10.1056/NEJMoa1301689", target = "_blank"), " | ", tags$a("Data", href = "https://www.cbioportal.org/", target = "_blank"))
         ),
-        h2("Caveats"),
-        p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
-        p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, and Beat AML karyotype data. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity."),
-        h2("About the author"),
-        div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 10px;",
-          tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
-          div(
-            p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
-            p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
-            p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
-          )
+        div(style = "margin: 1.5em 0;",
+          tags$img(src = "Meta_AML_schematic.png", alt = "Meta AML schematic", style = "width: 100%; max-width: 800px; height: auto; border: 1px solid #dee2e6; border-radius: 6px;")
         ),
-        hr(),
-        p(style = "font-size: 0.9em; color: #666;",
-          "© ", format(Sys.Date(), "%Y"), " Brooks Benard. Licensed under ",
-          tags$a("MIT License", href = "https://opensource.org/licenses/MIT", target = "_blank"), "."
+        div(class = "caveats-panel",
+          h2("Caveats"),
+          p("This site is intended for research purposes only and is in active development. Some initial data loadings may take a few seconds."),
+          tags$details(class = "caveat-toggle",
+            tags$summary("Cancer Cell Fractions from VAF"),
+            div(class = "caveat-toggle-body",
+              p("Estimated cancer cell fractions (CCF) are derived from VAF and cytogenetic copy number: CCF = VAF x CN (capped at 100%). Copy number is determined from UK-NCRI cytogenetics data, AML-SG clinical cytogenetic flags and ISCN karyotype strings, Beat AML ISCN karyotype strings, and TCGA gene-level GISTIC results. Sex-chromosome loci are corrected for patient sex (hemizygous CN=1 for males). Where cytogenetics are unavailable, diploid CN=2 is assumed. CCF values are estimates and do not account for tumor purity or subclonal copy number heterogeneity.")
+            )
+          ),
+          tags$details(class = "caveat-toggle",
+            tags$summary("ELN 2022 Risk"),
+            div(class = "caveat-toggle-body",
+              p("We implemented an automated ELN 2022 risk assignment algorithm based on ", tags$a("Diagnosis and management of AML in adults: 2022 (Blood)", href = "https://ashpublications.org/blood/article/140/12/1345/485817/Diagnosis-and-management-of-AML-in-adults-2022", target = "_blank"), ", using karyotype and mutation data when available for each cohort.")
+            )
+          )
         )
       )
     ),
-    tabPanel("Meta AML4", value = "meta_aml4",
+    tabPanel(HTML("<i class=\"bi bi-droplet-fill\" aria-hidden=\"true\" style=\"margin-right: 6px; color: #fff;\"></i> Meta AML4"), value = "meta_aml4",
       conditionalPanel(
         condition = "input.main_nav === 'analyses' || input.main_nav === 'meta_aml4'",
         sidebarLayout(
@@ -673,12 +739,14 @@ ui <- fluidPage(
               }), selected = "All"),
             selectInput("karyotype", "Karyotype:", 
               choices = c("All", "Complex", "Normal", "Other", "Unknown"), selected = "All"),
+            selectInput("eln_2022_risk", "ELN 2022 Risk:",
+              choices = c("All", "Favorable", "Intermediate", "Adverse", "Unknown"), selected = "All"),
             radioButtons("vaf_metric", "Allele metric:",
               choices = c("VAF" = "VAF", "CCF" = "CCF"), selected = "VAF", inline = TRUE),
             conditionalPanel(
               condition = "input.main_nav === 'meta_aml4'",
               hr(),
-              div(style = "border-left: 3px solid #95a5a6; padding-left: 12px; margin-top: 8px; margin-bottom: 4px;",
+              div(style = "background: #e8eaed; border-left: 3px solid #95a5a6; padding: 12px 12px 12px 12px; margin-top: 8px; margin-bottom: 4px; border-radius: 4px;",
                 p(style = "margin: 0 0 6px 0; font-weight: 600; color: #34495e;", "Only interested in a specific gene?"),
                 p(style = "margin: 0 0 8px 0; font-size: 13px; color: #5d6d7e;", "Summarize all associations for a single gene:"),
                 selectInput("gene_summary", NULL, choices = c("Select gene..." = ""), selected = "")
@@ -692,12 +760,53 @@ ui <- fluidPage(
           )
         )
       )
+    ),
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-download-alt\" aria-hidden=\"true\"></span> Downloads"), value = "downloads",
+      div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
+        div(style = "background: #f8f9fa; border-left: 4px solid #374e55; border-radius: 6px; padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);",
+          h4(style = "margin-top: 0; color: #374e55; font-weight: 600;", "Meta AML aggregated clinical"),
+          p(style = "margin-bottom: 10px; color: #444; line-height: 1.55; font-size: 14px;",
+            "Clinical data from UK-NCRI, AML-SG, Beat AML, and TCGA LAML are cleaned, harmonized, and re-annotated to common column names and units. Includes cohort, demographics, AML type, ELN 2017 and ELN 2022 risk (derived where missing from cytogenetics and mutations), overall survival (time and status), key labs (WBC, hemoglobin, platelets, LDH, blasts), and simplified karyotype (Normal / Complex / Other). Source file paths are retained for traceability."),
+          p(style = "margin-bottom: 12px; font-size: 14px;", strong("File size: "), textOutput("doc_clinical_size", inline = TRUE)),
+          downloadButton("download_agg_clinical", "Download Meta_AML_aggregated_clinical.tsv", class = "btn-primary", style = "background: #374e55; border-color: #374e55;")
+        ),
+        div(style = "background: #f8f9fa; border-left: 4px solid #374e55; border-radius: 6px; padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);",
+          h4(style = "margin-top: 0; color: #374e55; font-weight: 600;", "Meta AML aggregated mutations"),
+          p(style = "margin-bottom: 10px; color: #444; line-height: 1.55; font-size: 14px;",
+            "MAF-style mutation table: one row per variant across all four cohorts. Variants are cleaned and re-annotated: standard MAF columns (Hugo_Symbol, Chromosome, positions, Variant_Classification, Variant_Type, HGVSp_Short, etc.), sample and cohort identifiers, and VAF. Variant classification and type are normalized across sources; gene symbols and protein changes are harmonized. Built from TCGA LAML, Beat AML2, AML-SG (Genetic + FLT3-ITD), and UK-NCRI mutation files. Suitable for downstream MAF-based tools and custom analyses."),
+          p(style = "margin-bottom: 12px; font-size: 14px;", strong("File size: "), textOutput("doc_maf_size", inline = TRUE)),
+          downloadButton("download_agg_maf", "Download Meta_AML_aggregated_mutations.maf.tsv", class = "btn-primary", style = "background: #374e55; border-color: #374e55;")
+        )
+      )
+    ),
+    tabPanel(HTML("<span class=\"glyphicon glyphicon-envelope\" aria-hidden=\"true\"></span> Contact"), value = "contact",
+      div(class = "welcome-page", style = "max-width: 800px; margin: 0 auto; padding: 24px 15px;",
+        div(style = "background: #f8f9fa; border-left: 4px solid #374e55; border-radius: 6px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);",
+          p(style = "margin: 0 0 18px 0; color: #444; line-height: 1.6; font-size: 15px;",
+            "I am the sole developer and maintainer of this site. Please reach out if you encounter any issues with the site, find any data inaccuracies, or have suggestions or requests for added functionality."),
+          div(style = "display: flex; align-items: center; gap: 16px; margin-bottom: 0;",
+            tags$img(src = "linkedin_pic%20copy.jpeg", alt = "Brooks Benard", style = "border-radius: 50%; width: 64px; height: 64px; object-fit: cover;"),
+            div(
+              p(style = "margin: 0; font-size: 16px; font-weight: 600;", "Brooks Benard"),
+              p(style = "margin: 2px 0 0; font-size: 14px; color: #555;", "Stanford University"),
+              p(style = "margin: 4px 0 0;", tags$a(href = "mailto:bbenard@stanford.edu", "bbenard@stanford.edu"), " · ", tags$a("Website", href = "https://brooksbenard.github.io/", target = "_blank"), " · ", tags$a("GitHub", href = "https://github.com/brooksbenard", target = "_blank"))
+            )
+          )
+        )
+      )
     )
+  )
+  )
   )
 )
 
 # Server
 server <- function(input, output, session) {
+
+  # Header brand "Meta AML Explorer" links to About tab
+  observeEvent(input$brand_to_about, {
+    updateTabsetPanel(session, "main_nav", selected = "about")
+  }, ignoreNULL = TRUE)
 
   # Cache filtered data per tab to avoid recomputation when switching back
   cached_filtered_data <- reactiveValues(analyses = NULL, meta_aml4 = NULL)
@@ -709,6 +818,8 @@ server <- function(input, output, session) {
   selected_meta4_allgene_tab <- reactiveVal(NULL)
   # Preserve sub-tab inside Single Gene Associations (Clinical, Co-mutation, VAF, Drug Sensitivity)
   selected_gene_summary_sub_tab <- reactiveVal("clinical")
+  # Oncoprint: render only after user clicks "Generate oncoprint" (avoids blocking Co-mutation tab)
+  show_oncoprint <- reactiveVal(FALSE)
 
   # Precomputed Drug Sensitivity results (Mut vs WT, VAF vs AUC correlations, LOOCV) per subset to reduce memory on deploy
   precomputed_drug <- NULL
@@ -716,6 +827,40 @@ server <- function(input, output, session) {
     path <- file.path(getwd(), "drug_sensitivity_precomputed.rds")
     if (file.exists(path)) precomputed_drug <- readRDS(path)
   }, error = function(e) precomputed_drug <- NULL)
+
+  # Documentation and Downloads: file size summary and download handlers
+  format_file_size <- function(bytes) {
+    if (is.na(bytes) || bytes < 0) return("—")
+    if (bytes < 1024) return(paste(bytes, "B"))
+    if (bytes < 1024^2) return(paste(round(bytes / 1024, 2), "KB"))
+    return(paste(round(bytes / 1024^2, 2), "MB"))
+  }
+  output$doc_clinical_size <- renderText({
+    path <- file.path(getwd(), "Meta_AML_aggregated_clinical.tsv")
+    if (!file.exists(path)) return("— (file not found)")
+    format_file_size(file.info(path)$size)
+  })
+  output$doc_maf_size <- renderText({
+    path <- file.path(getwd(), "Meta_AML_aggregated_mutations.maf.tsv")
+    if (!file.exists(path)) return("— (file not found)")
+    format_file_size(file.info(path)$size)
+  })
+  output$download_agg_clinical <- downloadHandler(
+    filename = "Meta_AML_aggregated_clinical.tsv",
+    content = function(file) {
+      path <- file.path(getwd(), "Meta_AML_aggregated_clinical.tsv")
+      if (!file.exists(path)) stop("Meta_AML_aggregated_clinical.tsv not found. Run build_aggregated_clinical.R.")
+      file.copy(path, file)
+    }
+  )
+  output$download_agg_maf <- downloadHandler(
+    filename = "Meta_AML_aggregated_mutations.maf.tsv",
+    content = function(file) {
+      path <- file.path(getwd(), "Meta_AML_aggregated_mutations.maf.tsv")
+      if (!file.exists(path)) stop("Meta_AML_aggregated_mutations.maf.tsv not found. Run build_aggregated_maf.R.")
+      file.copy(path, file)
+    }
+  )
 
   # Format p/q for display: exact numeric values (no < 0.01 style)
   format_pval_display <- function(p) {
@@ -773,15 +918,19 @@ server <- function(input, output, session) {
         tabPanel("Cohort Overview",
           fluidRow(
             column(3, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
-            column(9, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
+            column(4, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280))),
+            column(5, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 380)))
           ),
           fluidRow(
-            column(6, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 400))),
-            column(6, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 400)))
+            column(4, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("Sex by Dataset"), plotOutput("overview_sex_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("ELN 2022 Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 260)))
           ),
           fluidRow(
-            column(6, wellPanel(h4("ELN Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 400))),
-            column(6, wellPanel(h4("Recurrently Mutated Genes"), p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Genes mutated in more than 1% of samples."), plotOutput("overview_gene_freq_plot", height = 400)))
+            column(12, wellPanel(h4("Recurrently Mutated Genes"), plotOutput("overview_gene_freq_plot", height = 450)))
+          ),
+          fluidRow(
+            column(12, wellPanel(h4("UK-NCRI copy number (gains/deletions)"), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Arm-level gains and deletions from UK-NCRI cytogenetics; samples with no alterations excluded. BrBG: green = gain, brown = deletion. Stacked bars above each arm show proportion of patients with gain/loss/normal."), plotOutput("overview_cn_heatmap_plot", height = 600)))
           )
         ),
         tabPanel("All Gene Associations",
@@ -809,13 +958,15 @@ server <- function(input, output, session) {
                     column(12, wellPanel(
                       fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
                       p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+                      p(style = "margin-bottom: 10px;", "Generate the oncoprint (may take a moment):"),
+                      actionButton("generate_oncoprint_btn", "Generate oncoprint", class = "btn-primary", style = "background: #374e55; border-color: #374e55;"),
                       plotOutput("oncoprint_plot", height = 500)
                     ))
                   )
                 ),
                 tabPanel("Odds Ratio and Survival",
                   fluidRow(
-                    column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
+                    column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1)."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
                     column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
                   ),
                   fluidRow(
@@ -824,8 +975,8 @@ server <- function(input, output, session) {
                       fluidRow(
                         column(4,
                           div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                            h5(style = "margin-top: 0;", "Gene Selection"),
-                            radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                            p(style = "margin: 0 0 10px 0; font-weight: 600;", "How many co-occurring mutations do you want to compare?"),
+                            radioButtons("comut_n", label = NULL, choices = c("2 genes" = 2, "3 genes" = 3), selected = 2, inline = TRUE),
                             selectInput("comut_gene1", "Gene 1:", choices = gene_choices),
                             selectInput("comut_gene2", "Gene 2:", choices = gene_choices),
                             conditionalPanel(condition = "input.comut_n == 3",
@@ -969,20 +1120,26 @@ server <- function(input, output, session) {
         tabPanel("Cohort Overview",
           fluidRow(
             column(3, wellPanel(h4("Selected Cohort"), tableOutput("summary_table"))),
-            column(9, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280)))
+            column(4, wellPanel(h4("Samples by Cohort & Subset"), plotOutput("cohort_plot", height = 280))),
+            column(5, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 380)))
           ),
           fluidRow(
-            column(6, wellPanel(h4("Survival by Dataset"), plotOutput("overview_surv_dataset_plot", height = 400))),
-            column(6, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 400)))
+            column(4, wellPanel(h4("Age Distribution by Dataset"), plotOutput("overview_age_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("Sex by Dataset"), plotOutput("overview_sex_dataset_plot", height = 260))),
+            column(4, wellPanel(h4("ELN 2022 Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 260)))
           ),
           fluidRow(
-            column(6, wellPanel(h4("ELN Risk by Dataset"), plotOutput("overview_eln_dataset_plot", height = 400))),
-            column(6, wellPanel(h4("Recurrently Mutated Genes"), p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "Genes mutated in more than 1% of samples."), plotOutput("overview_gene_freq_plot", height = 400)))
+            column(12, wellPanel(h4("Recurrently Mutated Genes"), plotOutput("overview_gene_freq_plot", height = 450)))
+          ),
+          fluidRow(
+            column(12, wellPanel(h4("UK-NCRI copy number (gains/deletions)"), p(style = "font-size: 13px; color: #666; margin-bottom: 8px;", "Arm-level gains and deletions from UK-NCRI cytogenetics; samples with no alterations excluded. BrBG: green = gain, brown = deletion. Stacked bars above each arm show proportion of patients with gain/loss/normal."), plotOutput("overview_cn_heatmap_plot", height = 600)))
           ),
           fluidRow(
             column(12, wellPanel(
               h4("Oncoprint"),
               p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+              p(style = "margin-bottom: 10px;", "Generate the oncoprint (may take a moment):"),
+              actionButton("generate_oncoprint_btn", "Generate oncoprint", class = "btn-primary", style = "background: #374e55; border-color: #374e55;"),
               plotOutput("oncoprint_plot", height = 500)
             ))
           )
@@ -1008,13 +1165,15 @@ server <- function(input, output, session) {
                 column(12, wellPanel(
                   fluidRow(column(8, h4("Oncoprint")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_oncoprint_plot", "Download plot")))),
                   p(style = "font-size: 13px; color: #666; margin-bottom: 6px;", "All recurrent mutations in the selected cohort. Each column is a sample and genes are ordered by decreasing frequency."),
+                  p(style = "margin-bottom: 10px;", "Generate the oncoprint (may take a moment):"),
+                  actionButton("generate_oncoprint_btn", "Generate oncoprint", class = "btn-primary", style = "background: #374e55; border-color: #374e55;"),
                   plotOutput("oncoprint_plot", height = 500)
                 ))
               )
             ),
             tabPanel("Odds Ratio and Survival",
               fluidRow(
-                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1); ", span(style = "color: #808080; font-weight: bold;", "Gray"), " = not significant."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
+                column(6, wellPanel(fluidRow(column(8, h4("Co-mutation Odds Ratio")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_plot", "Download plot")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", span(style = "color: #b2182b; font-weight: bold;", "Red"), " = co-occurring (OR > 1); ", span(style = "color: #2166ac; font-weight: bold;", "Blue"), " = mutually exclusive (OR < 1)."), div(style = "max-width: 100%; overflow: auto;", plotOutput("cooccurrence_plot", height = 500)))),
                 column(6, wellPanel(fluidRow(column(8, h4("Mutation Co-occurrence Statistics")), column(4, div(style = "text-align: right; margin-top: 5px;", downloadButton("download_cooccurrence_table", "Download table")))), p(style = "font-size: 13px; color: #666; margin-bottom: 4px;", "Odds ratio (OR) and FDR q-value. OR > 1 = genes tend to co-occur; OR < 1 = mutually exclusive."), div(style = "height: 500px; overflow-y: auto;", DTOutput("cooccurrence_table"))))
               ),
               fluidRow(
@@ -1023,8 +1182,8 @@ server <- function(input, output, session) {
                   fluidRow(
                     column(4,
                       div(style = "background: #eaecef; border-radius: 8px; padding: 14px 16px; margin-top: 4px;",
-                        h5(style = "margin-top: 0;", "Gene Selection"),
-                        radioButtons("comut_n", "Number of genes:", choices = c("2 genes" = 2, "3 genes" = 3), selected = 2),
+                        p(style = "margin: 0 0 10px 0; font-weight: 600;", "How many co-occurring mutations do you want to compare?"),
+                        radioButtons("comut_n", label = NULL, choices = c("2 genes" = 2, "3 genes" = 3), selected = 2, inline = TRUE),
                         selectInput("comut_gene1", "Gene 1:", choices = gene_choices_analyses),
                         selectInput("comut_gene2", "Gene 2:", choices = gene_choices_analyses),
                         conditionalPanel(condition = "input.comut_n == 3",
@@ -1191,7 +1350,7 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE, ignoreInit = FALSE)
   
   # Invalidate cache when filters change (min_gene_pct does NOT affect sample filtering, so not included here)
-  observeEvent(c(input$subset, input$cohort, input$karyotype), {
+  observeEvent(c(input$subset, input$cohort, input$karyotype, input$eln_2022_risk), {
     nav <- input$main_nav
     if (nav %in% c("analyses", "meta_aml4")) {
       cached_filtered_data[[nav]] <- NULL
@@ -1241,7 +1400,7 @@ server <- function(input, output, session) {
     
     # Check cache: if same tab and same filter params, return cached data
     # Note: gene frequency filter does NOT affect which samples are included, only which genes are shown
-    current_params <- list(subset = input$subset, cohort = eff_cohort, karyotype = input$karyotype)
+    current_params <- list(subset = input$subset, cohort = eff_cohort, karyotype = input$karyotype, eln_2022_risk = input$eln_2022_risk)
     if (!is.null(cached_filtered_data[[nav]]) && 
         identical(cached_data_params[[nav]], current_params)) {
       return(cached_filtered_data[[nav]])
@@ -1254,6 +1413,11 @@ server <- function(input, output, session) {
     if (eff_cohort != "All") df <- df[as.character(df$Cohort) == eff_cohort, , drop = FALSE]
     if (!is.null(input$karyotype) && input$karyotype != "All" && "Karyotype" %in% colnames(df)) {
       df <- df[as.character(df$Karyotype) == input$karyotype, , drop = FALSE]
+    }
+    if ("ELN_2022_Risk" %in% colnames(df) && !is.null(input$eln_2022_risk) && input$eln_2022_risk != "All") {
+      eln_sel <- input$eln_2022_risk
+      keep <- (as.character(df$ELN_2022_Risk) == eln_sel) | (is.na(df$ELN_2022_Risk) & eln_sel == "Unknown")
+      df <- df[keep, , drop = FALSE]
     }
     # Do NOT filter genes here - gene frequency filter only affects which genes are shown in dropdowns/plots, not which samples are included
     df <- as.data.frame(df, stringsAsFactors = FALSE)
@@ -1389,57 +1553,223 @@ server <- function(input, output, session) {
     present <- unique(udf$Cohort)
     cohort_pal <- cohort_pal[names(cohort_pal) %in% present]
     ggplot(udf, aes(x = Cohort, y = Age, fill = Cohort)) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot() +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
+      scale_y_continuous(labels = function(x) round(x)) +
       labs(x = NULL, y = "Age (years)") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
             legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
   })
 
-  # ---- Overview: ELN Risk by Dataset ----
+  # ---- Overview: ELN 2022 Risk by Dataset ----
   output$overview_eln_dataset_plot <- renderPlot({
     req(df <- filtered_data())
-    if (!"Risk" %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No ELN risk data") + theme_void())
+    # Use ELN 2022 risk when available, else fall back to Risk (e.g. ELN 2017)
+    risk_col <- if ("ELN_2022_Risk" %in% colnames(df) && any(!is.na(df$ELN_2022_Risk) & as.character(df$ELN_2022_Risk) %in% c("Favorable", "Intermediate", "Adverse"))) "ELN_2022_Risk" else "Risk"
+    if (!risk_col %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No ELN risk data") + theme_void())
     udf <- df[!duplicated(df$Sample), , drop = FALSE]
-    udf <- udf[!is.na(udf$Risk) & !is.na(udf$Cohort), , drop = FALSE]
-    udf <- udf[udf$Risk != "Unknown", , drop = FALSE]
+    udf <- udf[!is.na(udf[[risk_col]]) & !is.na(udf$Cohort), , drop = FALSE]
+    udf <- udf[as.character(udf[[risk_col]]) %in% c("Favorable", "Intermediate", "Adverse"), , drop = FALSE]
     if (nrow(udf) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No ELN risk data") + theme_void())
-    udf$Risk <- factor(udf$Risk, levels = c("Favorable", "Intermediate", "Adverse"))
-    tbl <- as.data.frame(table(Cohort = udf$Cohort, Risk = udf$Risk), stringsAsFactors = FALSE)
+    udf$Risk_plot <- factor(as.character(udf[[risk_col]]), levels = c("Favorable", "Intermediate", "Adverse"))
+    tbl <- as.data.frame(table(Cohort = udf$Cohort, Risk = udf$Risk_plot), stringsAsFactors = FALSE)
     cohort_totals <- aggregate(Freq ~ Cohort, data = tbl, sum)
     tbl <- merge(tbl, cohort_totals, by = "Cohort", suffixes = c("", "_total"))
     tbl$Pct <- ifelse(tbl$Freq_total > 0, tbl$Freq / tbl$Freq_total * 100, 0)
     tbl$Risk <- factor(tbl$Risk, levels = c("Favorable", "Intermediate", "Adverse"))
     ggplot(tbl, aes(x = Cohort, y = Pct, fill = Risk)) +
       geom_bar(stat = "identity", position = "stack") +
+      geom_text(aes(label = ifelse(Pct >= 2, round(Pct), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
       scale_fill_manual(values = PAL_RISK, na.value = "gray70") +
-      labs(x = NULL, y = "Percentage of patients (%)", fill = "ELN Risk") +
+      scale_y_continuous(labels = function(x) round(x)) +
+      labs(x = NULL, y = "Percentage of patients (%)", fill = "ELN 2022 Risk") +
       theme_minimal(base_size = 16) +
       theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
             legend.text = element_text(size = 13), legend.title = element_text(size = 14),
             axis.text.x = element_text(angle = 45, hjust = 1))
   })
 
-  # ---- Overview: Recurrently Mutated Genes (>1% of samples) ----
+  # ---- Overview: Sex proportion by Dataset (stacked bar) ----
+  output$overview_sex_dataset_plot <- renderPlot({
+    req(df <- filtered_data())
+    if (!"Sex" %in% colnames(df)) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No sex data") + theme_void())
+    udf <- df[!duplicated(df$Sample), , drop = FALSE]
+    udf <- udf[!is.na(udf$Cohort), , drop = FALSE]
+    if (nrow(udf) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void())
+    sex <- as.character(udf$Sex)
+    sex[tolower(sex) %in% c("m", "male")] <- "Male"
+    sex[tolower(sex) %in% c("f", "female")] <- "Female"
+    sex[is.na(sex) | sex == "" | !sex %in% c("Male", "Female")] <- "Unknown"
+    udf$Sex_plot <- factor(sex, levels = c("Male", "Female", "Unknown"))
+    tbl <- as.data.frame(table(Cohort = udf$Cohort, Sex = udf$Sex_plot), stringsAsFactors = FALSE)
+    cohort_totals <- aggregate(Freq ~ Cohort, data = tbl, sum)
+    tbl <- merge(tbl, cohort_totals, by = "Cohort", suffixes = c("", "_total"))
+    tbl$Pct <- ifelse(tbl$Freq_total > 0, tbl$Freq / tbl$Freq_total * 100, 0)
+    pal_sex <- c("Male" = "#6a51a3", "Female" = "#43a2ca", "Unknown" = "gray90")
+    ggplot(tbl, aes(x = Cohort, y = Pct, fill = Sex)) +
+      geom_bar(stat = "identity", position = "stack") +
+      geom_text(aes(label = ifelse(Pct >= 2, round(Pct), "")), position = position_stack(vjust = 0.5), size = 5, color = "white", fontface = "bold") +
+      scale_fill_manual(values = pal_sex, na.value = "gray90") +
+      scale_y_continuous(labels = function(x) round(x)) +
+      labs(x = NULL, y = "Percentage of patients (%)", fill = "Sex") +
+      theme_minimal(base_size = 16) +
+      theme(axis.text = element_text(size = 14), axis.title = element_text(size = 15),
+            legend.text = element_text(size = 13), legend.title = element_text(size = 14),
+            axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+
+  # ---- Overview: Recurrently Mutated Genes (>1% of samples), stacked by dataset ----
   output$overview_gene_freq_plot <- renderPlot({
     req(df <- filtered_data())
     n_samples <- length(unique(df$Sample))
     if (n_samples == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data") + theme_void())
     gene_sample <- df[!duplicated(paste(df$Sample, df$Gene_for_analysis)), , drop = FALSE]
-    gene_counts <- as.data.frame(table(Gene = gene_sample$Gene_for_analysis), stringsAsFactors = FALSE)
-    gene_counts$Pct <- gene_counts$Freq / n_samples * 100
-    gene_counts <- gene_counts[gene_counts$Pct >= 1, , drop = FALSE]
-    if (nrow(gene_counts) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes mutated in >1% of samples") + theme_void())
-    gene_counts <- gene_counts[order(gene_counts$Pct, decreasing = TRUE), , drop = FALSE]
-    gene_counts$Gene <- factor(gene_counts$Gene, levels = rev(gene_counts$Gene))
-    ggplot(gene_counts, aes(x = Pct, y = Gene)) +
-      geom_col(fill = "#4292c6", width = 0.7) +
-      geom_text(aes(label = paste0(round(Pct, 1), "%")), hjust = -0.1, size = 3.5) +
-      scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
-      labs(x = "% of samples mutated", y = NULL) +
-      theme_minimal(base_size = 14) +
-      theme(axis.text.y = element_text(size = 9), axis.text.x = element_text(size = 12), axis.title = element_text(size = 13))
+    # Count mutated samples per Gene and Cohort
+    tbl <- aggregate(Sample ~ Gene_for_analysis + Cohort, data = gene_sample, FUN = function(x) length(unique(x)))
+    colnames(tbl) <- c("Gene", "Cohort", "Freq")
+    tbl$Pct <- tbl$Freq / n_samples * 100
+    gene_totals <- aggregate(Pct ~ Gene, data = tbl, sum)
+    keep_genes <- gene_totals$Gene[gene_totals$Pct >= 1]
+    tbl <- tbl[tbl$Gene %in% keep_genes, , drop = FALSE]
+    if (nrow(tbl) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No genes mutated in >1% of samples") + theme_void())
+    gene_order <- as.character(gene_totals$Gene[order(gene_totals$Pct, decreasing = TRUE)])
+    gene_order <- gene_order[gene_order %in% keep_genes]
+    tbl$Gene <- factor(tbl$Gene, levels = gene_order)
+    cohort_pal <- if (is_meta4()) META4_COHORT_COL else PAL_COHORT
+    cohort_pal <- cohort_pal[names(cohort_pal) %in% unique(tbl$Cohort)]
+    gene_totals_plot <- gene_totals[gene_totals$Gene %in% keep_genes, , drop = FALSE]
+    gene_totals_plot$Gene <- factor(gene_totals_plot$Gene, levels = gene_order)
+    ggplot(tbl, aes(x = Gene, y = Pct, fill = Cohort)) +
+      geom_col(position = "stack", width = 0.7) +
+      geom_text(data = gene_totals_plot, aes(x = Gene, y = Pct, label = round(Pct, 1)), inherit.aes = FALSE, vjust = -0.3, size = 4.5, fontface = "bold") +
+      scale_fill_manual(values = cohort_pal, na.value = "gray70") +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+      labs(x = NULL, y = "% of samples mutated", fill = "Dataset") +
+      theme_minimal(base_size = 16) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 13), axis.text.y = element_text(size = 14), axis.title = element_text(size = 15),
+            legend.text = element_text(size = 13), legend.title = element_text(size = 14))
+  })
+
+  # UK-NCRI copy number matrix from cytogenetics (add_/del_) for heatmap
+  uk_ncri_cn_matrix <- reactive({
+    path <- file.path(getwd(), "UK_NCRI_data", "UK_NCRI_Cytogenetics_data.csv")
+    if (!file.exists(path)) return(NULL)
+    raw <- utils::read.csv(path, skip = 1, stringsAsFactors = FALSE)
+    add_cols <- grep("^add_", names(raw), value = TRUE)
+    del_cols <- grep("^del_", names(raw), value = TRUE)
+    if (length(add_cols) == 0 && length(del_cols) == 0) return(NULL)
+    # Arm order: 1p, 1q, 2p, 2q, ..., 22p, 22q, Xp, Xq
+    chr_order <- function(arm) {
+      arm <- tolower(arm)
+      chr <- sub("[pq]$", "", arm)
+      arm_ <- sub("^[0-9]+|^x", "", arm)
+      n <- if (chr == "x") 23 else as.integer(chr)
+      list(n = n, p = if (arm_ == "p") 1 else 2)
+    }
+    all_arms <- unique(c(gsub("^add_", "", add_cols), gsub("^del_", "", del_cols)))
+    all_arms <- all_arms[order(vapply(all_arms, function(a) {
+      o <- chr_order(a)
+      o$n * 2 + o$p
+    }, 0))]
+    id_col <- names(raw)[1]
+    sample_ids <- as.character(raw[[id_col]])
+    mat <- matrix(0, nrow = nrow(raw), ncol = length(all_arms),
+                 dimnames = list(sample_ids, all_arms))
+    for (arm in all_arms) {
+      add_nm <- paste0("add_", arm)
+      del_nm <- paste0("del_", arm)
+      add_val <- if (add_nm %in% names(raw)) as.numeric(raw[[add_nm]]) else rep(0, nrow(raw))
+      del_val <- if (del_nm %in% names(raw)) as.numeric(raw[[del_nm]]) else rep(0, nrow(raw))
+      add_val[is.na(add_val)] <- 0
+      del_val[is.na(del_val)] <- 0
+      mat[, arm] <- ifelse(add_val > 0, 1, ifelse(del_val > 0, -1, 0))
+    }
+    # Proportions per arm (gain / loss / normal) from full cohort
+    n <- nrow(mat)
+    prop_bar <- matrix(0, nrow = 3, ncol = length(all_arms),
+                      dimnames = list(c("gain", "loss", "normal"), all_arms))
+    for (arm in all_arms) {
+      prop_bar["gain", arm]  <- sum(mat[, arm] == 1) / n
+      prop_bar["loss", arm]  <- sum(mat[, arm] == -1) / n
+      prop_bar["normal", arm] <- sum(mat[, arm] == 0) / n
+    }
+    # Remove rows (samples) with no gains or losses
+    has_alt <- rowSums(mat != 0) > 0
+    mat <- mat[has_alt, , drop = FALSE]
+    list(matrix = mat, arms = all_arms, prop_bar = prop_bar)
+  })
+
+  output$overview_cn_heatmap_plot <- renderPlot({
+    obj <- uk_ncri_cn_matrix()
+    if (is.null(obj)) {
+      plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+      text(0.5, 0.5, "UK-NCRI cytogenetics file not found.\nAdd UK_NCRI_data/UK_NCRI_Cytogenetics_data.csv", cex = 1.2)
+      return(invisible(NULL))
+    }
+    mat <- obj$matrix
+    arms <- obj$arms
+    prop_bar <- obj$prop_bar
+    if (nrow(mat) < 1 || ncol(mat) < 1) {
+      plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+      text(0.5, 0.5, "No UK-NCRI samples with gains or deletions.", cex = 1.2)
+      return(invisible(NULL))
+    }
+    # 11-class BrBG: brown = deletion, white = neutral, green = gain
+    brbg <- RColorBrewer::brewer.pal(11, "BrBG")
+    col_gain <- brbg[11]
+    col_neutral <- brbg[6]
+    col_del <- brbg[1]
+    col_fun <- if (has_ComplexHeatmap && "colorRamp2" %in% ls(getNamespace("ComplexHeatmap"))) {
+      ComplexHeatmap::colorRamp2(c(-1, 0, 1), c(col_del, col_neutral, col_gain))
+    } else {
+      NULL
+    }
+    if (has_ComplexHeatmap && !is.null(col_fun)) {
+      # Stacked barplot above each arm: gain (green), loss (brown), normal (gray)
+      ha <- ComplexHeatmap::HeatmapAnnotation(
+        "Proportion" = ComplexHeatmap::anno_barplot(
+          t(prop_bar),
+          gp = grid::gpar(fill = c(col_gain, col_del, "#E0E0E0")),
+          height = grid::unit(2, "cm")
+        ),
+        show_annotation_name = TRUE,
+        annotation_name_side = "left"
+      )
+      ComplexHeatmap::Heatmap(
+        mat,
+        name = "CN",
+        col = col_fun,
+        cluster_rows = nrow(mat) > 1,
+        cluster_columns = TRUE,
+        row_dend_width = grid::unit(30, "mm"),
+        column_dend_height = grid::unit(20, "mm"),
+        column_labels = arms,
+        column_names_rot = 45,
+        column_names_side = "bottom",
+        row_names_gp = grid::gpar(fontsize = 6),
+        column_names_gp = grid::gpar(fontsize = 9),
+        heatmap_legend_param = list(
+          title = "Copy number",
+          at = c(-1, 0, 1),
+          labels = c("Deletion", "Neutral", "Gain")
+        ),
+        top_annotation = ha,
+        border = TRUE
+      )
+    } else {
+      # Fallback: base heatmap with row and column clustering
+      hc_r <- if (nrow(mat) > 1) hclust(dist(mat, method = "euclidean"), method = "complete") else list(order = seq_len(nrow(mat)))
+      hc_c <- hclust(dist(t(mat), method = "euclidean"), method = "complete")
+      mat_ord <- mat[hc_r$order, hc_c$order, drop = FALSE]
+      arms_ord <- arms[hc_c$order]
+      graphics::image(1:ncol(mat_ord), 1:nrow(mat_ord), t(mat_ord),
+                     col = c(col_del, col_neutral, col_gain),
+                     breaks = c(-1.5, -0.5, 0.5, 1.5),
+                     xaxt = "n", yaxt = "n", xlab = "", ylab = "Sample (clustered)")
+      axis(1, at = seq_len(ncol(mat_ord)), labels = arms_ord, las = 2, cex.axis = 0.8)
+      legend("topright", fill = c(col_del, col_neutral, col_gain), legend = c("Deletion", "Neutral", "Gain"), bty = "n")
+    }
   })
 
   oncoprint_data <- reactive({
@@ -1524,6 +1854,11 @@ server <- function(input, output, session) {
       top_genes <- head(top_genes, 30L)
       temp_dat <- temp_dat[top_genes, , drop = FALSE]
     }
+    # Exclude samples (columns) with no mutations in the plotted genes
+    col_has_mut <- colSums(temp_dat != "") > 0
+    samples <- samples[col_has_mut]
+    temp_dat <- temp_dat[, col_has_mut, drop = FALSE]
+    if (length(samples) == 0) return(NULL)
     clin_cols <- c("Sample", "Cohort", "Sex", "Risk", "Subset", "Time_to_OS")
     clin_cols <- clin_cols[clin_cols %in% colnames(final_data_matrix_3)]
     if (length(clin_cols) < 2) return(list(mut = NULL, temp_dat = temp_dat, anno_df = NULL, samples = samples, genes = top_genes))
@@ -1542,8 +1877,11 @@ server <- function(input, output, session) {
     list(mut = final_data_matrix_3[, c("Sample", "Gene", "variant_type"), drop = FALSE], temp_dat = temp_dat, anno_df = anno_df, samples = samples, genes = top_genes)
   })
 
+  observeEvent(input$generate_oncoprint_btn, { show_oncoprint(TRUE) }, ignoreInit = TRUE)
+
   output$oncoprint_plot <- renderPlot({
     req(input$main_nav %in% c("analyses", "meta_aml4"))
+    if (!show_oncoprint()) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "Click the button above to generate the oncoprint.", size = 5) + theme_void())
     od <- oncoprint_data()
     if (is.null(od) || !is.matrix(od$temp_dat) || nrow(od$temp_dat) == 0 || ncol(od$temp_dat) == 0) return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No data"))
     use_meta4 <- is_meta4()
@@ -1717,7 +2055,7 @@ server <- function(input, output, session) {
     fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
     scale_y_shared <- scale_y_discrete(limits = gene_order, drop = FALSE)
     p_vaf <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot(outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_shared +
       (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70", guide = "legend") else scale_fill_discrete(guide = "none")) +
@@ -1789,7 +2127,7 @@ server <- function(input, output, session) {
     df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
     scale_y_coh <- scale_y_discrete(limits = cohort_order, drop = FALSE)
     p_box <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot(outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_coh +
       scale_fill_manual(values = cohort_pal, na.value = "gray70") +
@@ -1827,7 +2165,7 @@ server <- function(input, output, session) {
     df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
     scale_y_cat <- scale_y_discrete(limits = cat_order, drop = FALSE)
     p_box <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
-      geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+      geom_boxplot(outlier.alpha = 0.3) +
       scale_x_continuous(limits = c(0, 100)) +
       scale_y_cat +
       scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70") +
@@ -2066,7 +2404,7 @@ server <- function(input, output, session) {
       n_cat <- if ("mutation_category" %in% colnames(df)) length(unique(df$mutation_category[!is.na(df$mutation_category) & df$mutation_category != ""])) else 0L
       fill_var <- if (n_cat >= 2L) "mutation_category" else "Gene_for_analysis"
       p <- ggplot(df, aes(x = .metric, y = Gene_for_analysis, fill = .data[[fill_var]])) +
-        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot(outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
         (if (fill_var == "mutation_category") scale_fill_manual(name = "Mutation category", values = PAL_MUT_CAT, na.value = "gray70") else scale_fill_discrete(guide = "none")) +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), legend.position = "top")
@@ -2109,7 +2447,7 @@ server <- function(input, output, session) {
       cat_order <- as.character(med$mutation_category[order(med$.metric)])
       df$mutation_category <- factor(as.character(df$mutation_category), levels = cat_order)
       p <- ggplot(df, aes(x = .metric, y = mutation_category, fill = mutation_category)) +
-        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot(outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
         scale_fill_manual(values = PAL_MUT_CAT, na.value = "gray70", guide = "none") +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
@@ -2132,7 +2470,7 @@ server <- function(input, output, session) {
       cohort_order <- as.character(med$Cohort[order(med$.metric)])
       df$Cohort <- factor(as.character(df$Cohort), levels = cohort_order)
       p <- ggplot(df, aes(x = .metric, y = Cohort, fill = Cohort)) +
-        geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
+        geom_boxplot(outlier.alpha = 0.3) + scale_x_continuous(limits = c(0, 100)) +
         scale_fill_manual(values = cohort_pal, na.value = "gray70", guide = "none") +
         labs(x = vlabel, y = NULL) + theme_minimal(base_size = 14) +
         theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13))
@@ -2493,7 +2831,7 @@ server <- function(input, output, session) {
       ord <- hclust(dist(mat_log))$order; mat_ord <- mat_log[ord, ord]
       df_plot <- data.frame(Gene1 = rep(rownames(mat_ord), ncol(mat_ord)), Gene2 = rep(colnames(mat_ord), each = nrow(mat_ord)), log2OR = as.vector(mat_ord))
       df_plot$Gene1 <- factor(df_plot$Gene1, levels = rownames(mat_ord)); df_plot$Gene2 <- factor(df_plot$Gene2, levels = colnames(mat_ord))
-      p <- ggplot(df_plot, aes(x = Gene1, y = Gene2, fill = log2OR)) + geom_tile() + scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) + coord_fixed() + labs(x = NULL, y = NULL, fill = "log2(OR)") + theme_minimal(base_size = 14) + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+      p <- ggplot(df_plot, aes(x = Gene1, y = Gene2, fill = log2OR)) + geom_tile() + scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) + coord_fixed() + labs(x = NULL, y = NULL, fill = "log2(OR)") + theme_minimal(base_size = 14) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
       ggsave(file, plot = p, width = 10, height = 10, dpi = 150)
     }
   )
@@ -2506,7 +2844,7 @@ server <- function(input, output, session) {
       keep_genes <- filtered_genes()
       df <- if (length(keep_genes) > 0) cooc$pairs[cooc$pairs$gene1 %in% keep_genes & cooc$pairs$gene2 %in% keep_genes, , drop = FALSE] else cooc$pairs
       df$pair <- paste(df$gene1, "+", df$gene2)
-      df <- df[order(-df$n_cooccur), c("pair", "odds_ratio", "n_cooccur", "p", "q"), drop = FALSE]
+      df <- df[order(-df$n_cooccur), c("pair", "n_gene1_only", "n_gene2_only", "n_neither", "odds_ratio", "n_cooccur", "p", "q"), drop = FALSE]
       write.csv(df, file, row.names = FALSE)
     }
   )
@@ -2627,11 +2965,13 @@ server <- function(input, output, session) {
       ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
     n_genes <- nrow(df)
     y_axis_size <- max(7, min(14, round(420 / n_genes)))
-    ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
-      geom_pointrange(size = 0.5) +
+    ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup, size = n_mut)) +
+      geom_linerange(linewidth = 0.5, show.legend = FALSE) +
+      geom_point(show.legend = TRUE) +
       geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
       coord_flip() +
       scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
+      scale_size_continuous(name = "N (mut)", range = c(2, 8)) +
       labs(x = NULL, y = "Hazard Ratio") +
       theme_minimal(base_size = 16) +
       theme(axis.text.y = element_text(size = y_axis_size), axis.text.x = element_text(size = 14), axis.title = element_text(size = 15))
@@ -2656,11 +2996,13 @@ server <- function(input, output, session) {
       df$ColorGroup <- ifelse(df$p >= 0.05, "Not significant", ifelse(df$HR > 1, "Significant (HR > 1)", "Significant (HR < 1)"))
       n_genes <- nrow(df)
       y_axis_size <- max(7, min(14, round(420 / n_genes)))
-      p <- ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup)) +
-        geom_pointrange(size = 0.5) +
+      p <- ggplot(df, aes(x = Gene, y = HR, ymin = lower, ymax = upper, color = ColorGroup, size = n_mut)) +
+        geom_linerange(linewidth = 0.5, show.legend = FALSE) +
+        geom_point(show.legend = TRUE) +
         geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
         coord_flip() +
         scale_color_manual(values = c("Significant (HR > 1)" = "#762a83", "Significant (HR < 1)" = "#1b7837", "Not significant" = "#9E9E9E"), name = NULL, guide = "none") +
+        scale_size_continuous(name = "N (mut)", range = c(2, 8)) +
         labs(x = NULL, y = "Hazard Ratio") +
         theme_minimal(base_size = 16) +
         theme(axis.text.y = element_text(size = y_axis_size), axis.text.x = element_text(size = 14), axis.title = element_text(size = 15))
@@ -2815,7 +3157,8 @@ server <- function(input, output, session) {
         ft <- fisher.test(tbl)
         or <- (tbl[2,2] * tbl[1,1]) / (tbl[2,1] * tbl[1,2])
         if (!is.finite(or)) or <- 0.01
-        results[[i]] <- data.frame(gene1 = g1, gene2 = g2, odds_ratio = or, n_cooccur = tbl[2,2], p = ft$p.value, stringsAsFactors = FALSE)
+        # tbl: row = g1 (1=mut), col = g2 (1=mut). [1,1]=neither, [2,1]=g1 only, [1,2]=g2 only, [2,2]=both
+        results[[i]] <- data.frame(gene1 = g1, gene2 = g2, odds_ratio = or, n_cooccur = tbl[2,2], n_gene1_only = tbl[2,1], n_gene2_only = tbl[1,2], n_neither = tbl[1,1], p = ft$p.value, stringsAsFactors = FALSE)
       }, error = function(e) NULL)
     }
     pairs_df <- do.call(rbind, results)
@@ -2860,12 +3203,12 @@ server <- function(input, output, session) {
       coord_fixed() +
       labs(x = NULL, y = NULL, fill = "log2(OR)", title = "Co-mutation Odds Ratio") +
       theme_minimal(base_size = 16) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = axis_text_size), axis.text.y = element_text(size = axis_text_size), legend.title = element_text(size = 14), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5, size = 16))
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = axis_text_size), axis.text.y = element_text(size = axis_text_size), legend.title = element_text(size = 14), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5, size = 16))
   })
 
   output$cooccurrence_table <- renderDT({
     cooc <- cooccurrence_data()
-    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
+    if (is.null(cooc$pairs) || nrow(cooc$pairs) == 0) return(datatable(data.frame(pair = character(), n_gene1_only = integer(), n_gene2_only = integer(), n_neither = integer(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     keep_genes <- filtered_genes()
     # Filter pairs to those where both genes pass min. gene frequency (for display only)
     if (length(keep_genes) > 0) {
@@ -2873,13 +3216,13 @@ server <- function(input, output, session) {
     } else {
       df <- cooc$pairs
     }
-    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
+    if (nrow(df) == 0) return(datatable(data.frame(pair = character(), n_gene1_only = integer(), n_gene2_only = integer(), n_neither = integer(), odds_ratio = numeric(), n_cooccur = integer(), p = character(), q = character()), options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE))
     df$pair <- paste(df$gene1, "+", df$gene2)
     df$odds_ratio <- round(df$odds_ratio, 2)
     df$p <- format_pval_display(df$p)
     df$q <- format_pval_display(df$q)
     df <- df[order(-df$n_cooccur), , drop = FALSE]
-    datatable(df[, c("pair", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE)
+    datatable(df[, c("pair", "n_gene1_only", "n_gene2_only", "n_neither", "odds_ratio", "n_cooccur", "p", "q")], options = list(pageLength = 10000, lengthChange = FALSE), rownames = FALSE, colnames = c("Gene pair", "N (gene 1 only)", "N (gene 2 only)", "N (neither)", "Odds ratio", "N (both)", "p", "q"))
   })
 
   # Figure 2: Co-occurrence & Prognosis (de novo)

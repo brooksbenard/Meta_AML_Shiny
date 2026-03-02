@@ -4,3 +4,27 @@
 .Rhistory
 .DS_Store
 *.Rproj
+
+# Build scripts (not needed at runtime; app uses pre-built RDS/TSV and load_beataml2.R)
+build_aggregated_cytogenetics.R
+build_cohort_rds.R
+build_aggregated_clinical.R
+build_AML_Meta_Cohort_v2.R
+build_aggregated_maf.R
+precompute_drug_sensitivity.R
+setup_amlsg.R
+
+# Raw data used only by build scripts (app reads AML_Meta_Cohort_v2.rds and aggregated TSVs)
+laml_tcga/
+amlsg_data/
+UK_NCRI_data/
+
+# Output not used by app
+Meta_AML_aggregated_cytogenetics.tsv
+
+# Documentation and notes (not needed to run the app)
+README.md
+AML_Meta_Cohort_v2_README.md
+MAF_Lollipop_Implementation_Notes.md
+example_MAF_ASXL1_lollipop.md
+Rplots.pdf

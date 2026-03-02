@@ -177,6 +177,41 @@ if (file.exists(beat_path) && requireNamespace("readxl", quietly = TRUE)) {
       simp_karyo[is_complex] <- "Complex"
       beat_clin$Karyotype <- simp_karyo
     }
+    # ELN 2022 from clinical + karyotype + mutations.txt (MDS genes)
+    raw_karyo <- if ("karyotype" %in% colnames(b_sub)) as.character(b_sub$karyotype) else rep(NA_character_, nrow(b_sub))
+    raw_karyo[is.na(raw_karyo) | raw_karyo == ""] <- NA_character_
+    cyto_fav <- !is.na(raw_karyo) & (grepl("t\\(15;17\\)|t\\(8;21\\)|inv\\(16\\)|t\\(16;16\\)", raw_karyo, ignore.case = TRUE))
+    is_complex_cyto <- !is.na(raw_karyo) & (grepl("complex", raw_karyo, ignore.case = TRUE) | grepl("inv\\(3\\)|t\\(3;3\\)|t\\(6;9\\)|del\\(5|-[57]|t\\(v;11\\)|t\\(9;22\\)", raw_karyo, ignore.case = TRUE))
+    if ("otherCytogenetics" %in% colnames(b_sub)) {
+      oc <- as.character(b_sub$otherCytogenetics)
+      is_complex_cyto <- is_complex_cyto | (!is.na(oc) & grepl("complex", oc, ignore.case = TRUE))
+    }
+    FLT3_ITD <- rep(FALSE, nrow(b_sub))
+    if ("FLT3-ITD" %in% colnames(b_sub)) FLT3_ITD <- grepl("positive", as.character(b_sub$`FLT3-ITD`), ignore.case = TRUE)
+    NPM1_mut <- rep(FALSE, nrow(b_sub))
+    if ("NPM1" %in% colnames(b_sub)) NPM1_mut <- grepl("positive", as.character(b_sub$NPM1), ignore.case = TRUE)
+    RUNX1_mut <- rep(FALSE, nrow(b_sub))
+    if ("RUNX1" %in% colnames(b_sub)) RUNX1_mut <- !is.na(b_sub$RUNX1) & as.character(b_sub$RUNX1) != "" & !grepl("negative", as.character(b_sub$RUNX1), ignore.case = TRUE)
+    ASXL1_mut <- rep(FALSE, nrow(b_sub))
+    if ("ASXL1" %in% colnames(b_sub)) ASXL1_mut <- !is.na(b_sub$ASXL1) & as.character(b_sub$ASXL1) != "" & !grepl("negative", as.character(b_sub$ASXL1), ignore.case = TRUE)
+    TP53_mut <- rep(FALSE, nrow(b_sub))
+    if ("TP53" %in% colnames(b_sub)) TP53_mut <- !is.na(b_sub$TP53) & as.character(b_sub$TP53) != "" & !grepl("negative", as.character(b_sub$TP53), ignore.case = TRUE)
+    CEBPA_any <- rep(FALSE, nrow(b_sub))
+    if ("CEBPA_Biallelic" %in% colnames(b_sub)) CEBPA_any <- !is.na(b_sub$CEBPA_Biallelic) & as.character(b_sub$CEBPA_Biallelic) != "" & !grepl("negative|FALSE|0", as.character(b_sub$CEBPA_Biallelic), ignore.case = TRUE)
+    MDS_genes <- c("BCOR", "EZH2", "SF3B1", "SRSF2", "STAG2", "U2AF1", "ZRSR2")
+    MDS_adv <- rep(FALSE, nrow(b_sub))
+    if (file.exists("beataml2_data/mutations.txt")) {
+      mut <- read.delim("beataml2_data/mutations.txt", stringsAsFactors = FALSE, check.names = FALSE)
+      gene_col <- if ("gene" %in% colnames(mut)) "gene" else "symbol"
+      samp_col <- "dbgap_sample_id"
+      samples_with_mds <- unique(mut[[samp_col]][mut[[gene_col]] %in% MDS_genes])
+      MDS_adv <- sample_ids %in% samples_with_mds
+    }
+    adverse_2022 <- is_complex_cyto | RUNX1_mut | ASXL1_mut | TP53_mut | MDS_adv | (NPM1_mut & is_complex_cyto)
+    favorable_2022 <- (cyto_fav | CEBPA_any | (NPM1_mut & !FLT3_ITD & !adverse_2022)) & !adverse_2022
+    beat_clin$ELN_2022_Risk <- "Intermediate"
+    beat_clin$ELN_2022_Risk[adverse_2022] <- "Adverse"
+    beat_clin$ELN_2022_Risk[favorable_2022] <- "Favorable"
     beat_clin$source_file <- "beataml2_data/beataml_wv1to4_clinical.xlsx"
   }
 }
@@ -226,6 +261,40 @@ if (file.exists("amlsg_data/AMLSG_Clinical_Anon.RData")) {
     amlsg_clin$Karyotype[!is.na(nk) & nk == 1] <- "Normal"
     amlsg_clin$Karyotype[!is.na(comp) & comp == 1] <- "Complex"
   }
+  # ELN 2022 from AMLSG_Clinical_Anon.RData cytogenetic flags + mutation data (RUNX1/ASXL1/TP53/MDS from AMLSG_Genetic.txt)
+  safe_num <- function(x) { out <- suppressWarnings(as.numeric(as.character(x))); out[is.na(out)] <- 0; out }
+  g <- function(nm) if (nm %in% colnames(cl)) safe_num(cl[[nm]]) == 1 else rep(FALSE, nrow(cl))
+  cyto_fav <- g("t_15_17") | g("t_8_21") | g("inv16_t16_16")
+  cyto_adv <- g("complex") | g("inv3_t3_3") | g("minus5_5q") | g("minus7") | g("t_6_9") | g("t_v_11") | g("t_9_22")
+  NPM1_mut <- g("NPM1")
+  FLT3_ITD <- g("FLT3_ITD")
+  CEBPA_any <- g("CEBPA")
+  RUNX1_mut <- rep(FALSE, nrow(cl))
+  ASXL1_mut <- rep(FALSE, nrow(cl))
+  TP53_mut <- rep(FALSE, nrow(cl))
+  MDS_adv <- rep(FALSE, nrow(cl))
+  gen_path <- "amlsg_data/AMLSG_Genetic.txt"
+  if (file.exists(gen_path)) {
+    amlsg_gen <- read.delim(gen_path, stringsAsFactors = FALSE)
+    samp_col <- if ("SAMPLE_NAME" %in% colnames(amlsg_gen)) "SAMPLE_NAME" else colnames(amlsg_gen)[1]
+    gene_col <- if ("GENE" %in% colnames(amlsg_gen)) "GENE" else grep("GENE|Gene", colnames(amlsg_gen), value = TRUE)[1]
+    if (length(gene_col) == 0 || is.na(gene_col)) gene_col <- "GENE"
+    pdids <- as.character(amlsg_clin$Patient_ID)
+    samples_with_runx1 <- unique(amlsg_gen[[samp_col]][amlsg_gen[[gene_col]] == "RUNX1"])
+    samples_with_asxl1 <- unique(amlsg_gen[[samp_col]][amlsg_gen[[gene_col]] == "ASXL1"])
+    samples_with_tp53 <- unique(amlsg_gen[[samp_col]][amlsg_gen[[gene_col]] == "TP53"])
+    MDS_genes <- c("BCOR", "EZH2", "SF3B1", "SRSF2", "STAG2", "U2AF1", "ZRSR2", "SFRS2")
+    samples_with_mds <- unique(amlsg_gen[[samp_col]][amlsg_gen[[gene_col]] %in% MDS_genes])
+    RUNX1_mut <- pdids %in% samples_with_runx1
+    ASXL1_mut <- pdids %in% samples_with_asxl1
+    TP53_mut <- pdids %in% samples_with_tp53
+    MDS_adv <- pdids %in% samples_with_mds
+  }
+  adverse_2022 <- cyto_adv | RUNX1_mut | ASXL1_mut | TP53_mut | MDS_adv | (NPM1_mut & cyto_adv)
+  favorable_2022 <- (cyto_fav | CEBPA_any | (NPM1_mut & !FLT3_ITD & !adverse_2022)) & !adverse_2022
+  amlsg_clin$ELN_2022_Risk <- "Intermediate"
+  amlsg_clin$ELN_2022_Risk[adverse_2022] <- "Adverse"
+  amlsg_clin$ELN_2022_Risk[favorable_2022] <- "Favorable"
   amlsg_clin$source_file <- "amlsg_data/AMLSG_Clinical_Anon.RData"
 }
 
@@ -319,6 +388,23 @@ if (length(ncri_ids) > 0) {
       ncri_clin$Karyotype <- "Other/Unknown"
       ncri_clin$Karyotype[!is.na(comp) & comp == 1] <- "Complex"
     }
+    # ELN 2022 from mutation/cytogenetic columns (per 2022 ELN criteria; source: aml_prognosis shares columns with aml_molecular_bdp.tsv)
+    safe_num <- function(x) { out <- suppressWarnings(as.numeric(as.character(x))); out[is.na(out)] <- 0; out }
+    g <- function(nm) if (nm %in% colnames(prog)) safe_num(prog[[nm]][idx]) == 1 else rep(FALSE, length(idx))
+    cyto_fav <- g("t_15_17") | g("t_8_21") | g("inv_16") | g("t_16_17")
+    cyto_adv <- g("complex") | g("inv_3") | g("t_6_9") | g("del_5") | g("del_7") | g("t_v_11") | g("t_9_22") | g("t_8_16")
+    NPM1_mut <- g("NPM1")
+    FLT3_ITD <- g("ITD")
+    CEBPA_any <- g("CEBPA_bi") | g("CEBPA_mono")
+    RUNX1_mut <- g("RUNX1")
+    ASXL1_mut <- g("ASXL1")
+    TP53_mut <- g("TP53")
+    MDS_adv <- g("BCOR") | g("EZH2") | g("SF3B1") | g("SRSF2") | g("STAG2") | g("U2AF1_p.S34") | g("U2AF1_p.Q157") | g("ZRSR2")
+    adverse_2022 <- cyto_adv | RUNX1_mut | ASXL1_mut | TP53_mut | MDS_adv | (NPM1_mut & cyto_adv)
+    favorable_2022 <- (cyto_fav | CEBPA_any | (NPM1_mut & !FLT3_ITD & !adverse_2022)) & !adverse_2022
+    ncri_clin$ELN_2022_Risk <- "Intermediate"
+    ncri_clin$ELN_2022_Risk[adverse_2022] <- "Adverse"
+    ncri_clin$ELN_2022_Risk[favorable_2022] <- "Favorable"
   }
   if (!is.null(n) && nrow(n) > 0) {
     idx <- midx_csv
