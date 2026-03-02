@@ -104,7 +104,7 @@ if (file.exists(pat_path) && file.exists(samp_path)) {
     tcga_clin$ELN_2017_Risk <- "Intermediate"
     tcga_clin$ELN_2017_Risk[adverse] <- "Adverse"
     tcga_clin$ELN_2017_Risk[favorable] <- "Favorable"
-    # ELN 2022: favorable (t(15;17), t(8;21), inv(16)/t(16;16), CEBPA bZIP, NPM1 without FLT3-ITD); FLT3-ITD = intermediate; adverse (cyto, RUNX1/ASXL1/TP53, MDS genes, NPM1+adverse cyto)
+    # ELN 2022: FLT3-ITD all intermediate; MDS-related genes adverse; NPM1+adverse cyto = adverse
     MDS_genes <- c("BCOR", "EZH2", "SF3B1", "SRSF2", "STAG2", "U2AF1", "ZRSR2")
     MDS_adv <- Reduce(`|`, lapply(MDS_genes, function(g) has_gene(g)))
     CEBPA_any <- n_cebpa[samples] >= 1
@@ -118,27 +118,22 @@ if (file.exists(pat_path) && file.exists(samp_path)) {
   tcga_clin$source_file <- "laml_tcga/data_clinical_patient.txt + data_clinical_sample.txt"
 }
 
-# ---------- 2. Beat AML2 (one row per sample: Patient_ID = sample ID for RDS/MAF match) ----------
+# ---------- 2. Beat AML2 (patient-level: one row per patient, ~800 pts) ----------
 beat_clin <- NULL
 beat_path <- "beataml2_data/beataml_wv1to4_clinical.xlsx"
 if (file.exists(beat_path) && requireNamespace("readxl", quietly = TRUE)) {
   b <- as.data.frame(readxl::read_excel(beat_path), stringsAsFactors = FALSE)
-  # RDS/MAF use sample IDs (dbgap_dnaseq_sample = dbgap_sample_id); use one row per sample so Patient_ID matches
-  sample_ids <- as.character(b$dbgap_dnaseq_sample)
-  if (!"dbgap_dnaseq_sample" %in% colnames(b)) sample_ids <- rep(NA_character_, nrow(b))
-  na_samp <- is.na(sample_ids) | sample_ids == ""
-  if (any(na_samp) && "dbgap_rnaseq_sample" %in% colnames(b))
-    sample_ids[na_samp] <- as.character(b$dbgap_rnaseq_sample[na_samp])
-  keep <- !na_samp & sample_ids != ""
-  b_sub <- b[keep, , drop = FALSE]
-  sample_ids <- sample_ids[keep]
-  uidx <- match(unique(sample_ids), sample_ids)
-  b_sub <- b_sub[uidx, , drop = FALSE]
-  sample_ids <- unique(sample_ids)
-  if (length(sample_ids) > 0) {
-    beat_clin <- fill_clin(length(sample_ids))
-    beat_clin$Patient_ID <- sample_ids
+  pid_col <- "dbgap_subject_id"
+  if (!pid_col %in% colnames(b)) pid_col <- grep("subject|patient", colnames(b), ignore.case = TRUE, value = TRUE)[1]
+  if (is.na(pid_col) || length(pid_col) == 0) pid_col <- colnames(b)[1]
+  pids <- as.character(b[[pid_col]])
+  pids <- pids[!is.na(pids) & pids != ""]
+  if (length(pids) > 0) {
+    uids <- unique(pids)
+    beat_clin <- fill_clin(length(uids))
+    beat_clin$Patient_ID <- uids
     beat_clin$Cohort <- "Beat AML"
+    b_sub <- b[match(uids, pids), , drop = FALSE]
     if ("ageAtDiagnosis" %in% colnames(b_sub)) beat_clin$Age <- as.character(round(suppressWarnings(as.numeric(b_sub$ageAtDiagnosis)), 1))
     if ("consensus_sex" %in% colnames(b_sub)) beat_clin$Sex <- as.character(b_sub$consensus_sex)
     beat_clin$AML_type <- "Other"
