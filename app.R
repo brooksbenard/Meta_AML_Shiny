@@ -1685,14 +1685,14 @@ server <- function(input, output, session) {
       del_val[is.na(del_val)] <- 0
       mat[, arm] <- ifelse(add_val > 0, 1, ifelse(del_val > 0, -1, 0))
     }
-    # Proportions per arm (gain / loss / normal) from full cohort
+    # Proportions per arm (loss / normal / gain) from full cohort; order for stacked bar: bottom=loss, middle=normal, top=gain
     n <- nrow(mat)
     prop_bar <- matrix(0, nrow = 3, ncol = length(all_arms),
-                      dimnames = list(c("gain", "loss", "normal"), all_arms))
+                      dimnames = list(c("loss", "normal", "gain"), all_arms))
     for (arm in all_arms) {
-      prop_bar["gain", arm]  <- sum(mat[, arm] == 1) / n
-      prop_bar["loss", arm]  <- sum(mat[, arm] == -1) / n
+      prop_bar["loss", arm]   <- sum(mat[, arm] == -1) / n
       prop_bar["normal", arm] <- sum(mat[, arm] == 0) / n
+      prop_bar["gain", arm]   <- sum(mat[, arm] == 1) / n
     }
     # Remove rows (samples) with no gains or losses
     has_alt <- rowSums(mat != 0) > 0
@@ -1726,11 +1726,11 @@ server <- function(input, output, session) {
       NULL
     }
     if (has_ComplexHeatmap && !is.null(col_fun)) {
-      # Stacked barplot above each arm: gain (green), loss (brown), normal (gray)
+      # Stacked barplot above each arm: loss (brown), normal (gray), gain (green) from bottom to top
       ha <- ComplexHeatmap::HeatmapAnnotation(
         "Proportion" = ComplexHeatmap::anno_barplot(
           t(prop_bar),
-          gp = grid::gpar(fill = c(col_gain, col_del, "#E0E0E0")),
+          gp = grid::gpar(fill = c(col_del, "#E0E0E0", col_gain)),
           height = grid::unit(2, "cm")
         ),
         show_annotation_name = TRUE,
