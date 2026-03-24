@@ -29,17 +29,6 @@ Clinical, mutation, and cytogenetic data from four cohorts are cleaned, harmoniz
 - **VAF / CCF (clonality)** — VAF associations, MaxStat survival thresholds, pairwise scatterplots for clonal ordering
 - **Drug sensitivity** — Mutation and VAF correlations with inhibitor AUC (Beat AML data)
 
-## Run locally
-
-- **RStudio:** Open `app.R` and click **Run App**.
-- **Terminal:** `Rscript -e 'shiny::runApp(".", launch.browser = TRUE)'`.
-
-Requires `AML_Meta_Cohort_v2.rds` (or `AML_Meta_Cohort.rds` / `AML_Meta_Cohort.RData`) and `beataml2_data/` with `mutations.txt` and `inhibitor_auc.txt`.
-
-## Deploy (Shinyapps.io)
-
-Use the **rsconnect** configuration in this folder. The app reads: `app.R`, `load_beataml2.R`, the cohort RDS, `beataml2_data/`, and `www/`.
-
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
